@@ -11,19 +11,36 @@ public class ClickToMove : MonoBehaviour
     [SerializeField] private Camera cam;
 
     [Header("Path Rendering")]
-    [SerializeField] private float pointSpacing = 0.25f;      // meters between points (smaller = smoother)
-    [SerializeField] private float lineYOffset = 0.05f;       // lift line above surface
-    [SerializeField] private LayerMask walkableMask = ~0;     // set to your Floor/Stairs layer to avoid snapping to upper floor
-    [SerializeField] private float projectRayStart = 1.0f;    // start ray this high above point
-    [SerializeField] private float projectRayLength = 3.0f;   // ray length downward
+    [SerializeField] private float pointSpacing = 0.25f;
+    [SerializeField] private float lineYOffset = 0.05f;
+    [SerializeField] private LayerMask walkableMask = ~0;
+    [SerializeField] private float projectRayStart = 1.0f;
+    [SerializeField] private float projectRayLength = 3.0f;
+
+    [Header("Repath")]
+    [SerializeField] private float repathInterval = 0.1f;
+    [SerializeField] private float repathMoveThreshold = 0.15f;
+    [SerializeField] private float destinationChangeThreshold = 0.05f;
+    [SerializeField] private float stopDrawDistance = 0.25f; // clear line when close enough
 
     private NavMeshAgent agent;
     private LineRenderer line;
+
+    private float repathTimer;
+    private Vector3 lastRepathPos;
+    private Vector3 lastDestination;
+
+    private NavMeshPath cachedPath;
+    private bool hasDestination;
 
     void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
         line = GetComponent<LineRenderer>();
+
+        cachedPath = new NavMeshPath();
+        lastRepathPos = transform.position;
+        lastDestination = new Vector3(float.PositiveInfinity, 0f, 0f);
 
         if (cam == null) cam = Camera.main;
     }
@@ -32,7 +49,7 @@ public class ClickToMove : MonoBehaviour
     {
         HandleClick();
         HandleTap();
-        DrawPathProjected();
+        UpdateAndDrawPath();
     }
 
     private void HandleClick()
@@ -47,6 +64,7 @@ public class ClickToMove : MonoBehaviour
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
                 agent.SetDestination(hit.point);
+                hasDestination = true;
             }
         }
     }
@@ -63,21 +81,53 @@ public class ClickToMove : MonoBehaviour
             if (Physics.Raycast(ray, out RaycastHit hit))
             {
                 agent.SetDestination(hit.point);
+                hasDestination = true;
             }
         }
     }
 
-    private void DrawPathProjected()
+    private void UpdateAndDrawPath()
     {
-        if (!agent.hasPath || agent.path == null || agent.path.corners == null || agent.path.corners.Length < 2)
+        if (!hasDestination)
         {
-            line.positionCount = 0;
+            ClearLine();
             return;
         }
 
-        Vector3[] corners = agent.path.corners;
+        // If we're basically at the destination, clear the line
+        if (Vector3.Distance(transform.position, agent.destination) <= stopDrawDistance)
+        {
+            ClearLine();
+            return;
+        }
 
-        // Build a denser point list so the line looks smooth
+        repathTimer -= Time.deltaTime;
+
+        bool movedEnough = Vector3.Distance(transform.position, lastRepathPos) > repathMoveThreshold;
+        bool destChanged = Vector3.Distance(agent.destination, lastDestination) > destinationChangeThreshold;
+        bool pathInvalid = cachedPath == null || cachedPath.corners == null || cachedPath.corners.Length < 2;
+
+        if ((repathTimer <= 0f && (movedEnough || destChanged)) || pathInvalid)
+        {
+            repathTimer = repathInterval;
+            lastRepathPos = transform.position;
+            lastDestination = agent.destination;
+
+            // Calculate from REAL position, not the agent's internal position
+            NavMesh.CalculatePath(transform.position, agent.destination, NavMesh.AllAreas, cachedPath);
+        }
+
+        if (cachedPath == null || cachedPath.corners == null || cachedPath.corners.Length < 2)
+        {
+            ClearLine();
+            return;
+        }
+
+        DrawProjectedSmoothed(cachedPath.corners);
+    }
+
+    private void DrawProjectedSmoothed(Vector3[] corners)
+    {
         List<Vector3> pts = new List<Vector3>(256);
 
         for (int i = 0; i < corners.Length - 1; i++)
@@ -93,12 +143,9 @@ public class ClickToMove : MonoBehaviour
                 float t = k / (float)(n - 1);
                 Vector3 p = Vector3.Lerp(a, b, t);
 
-                // Project point down onto WALKABLE surfaces only (prevents line cutting through upper floor)
                 Vector3 rayStart = p + Vector3.up * projectRayStart;
                 if (Physics.Raycast(rayStart, Vector3.down, out RaycastHit hit, projectRayLength, walkableMask))
-                {
                     p = hit.point;
-                }
 
                 p.y += lineYOffset;
                 pts.Add(p);
@@ -107,5 +154,22 @@ public class ClickToMove : MonoBehaviour
 
         line.positionCount = pts.Count;
         line.SetPositions(pts.ToArray());
+    }
+
+    private void ClearLine()
+    {
+        line.positionCount = 0;
+    }
+    public void CancelDestination()
+    {
+        hasDestination = false;
+        agent.ResetPath();
+        ClearLine();
+    }
+
+    public void ForceDestination(Vector3 dest)
+    {
+        agent.SetDestination(dest);
+        hasDestination = true;
     }
 }

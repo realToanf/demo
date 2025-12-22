@@ -7,32 +7,72 @@ public class FreeCam : MonoBehaviour
     public float lookSpeed = 0.1f;
     public float fastMultiplier = 3f;
 
+    [Header("Reset")]
+    public Transform origin; // assign an empty GameObject in the scene
+
     float yaw;
     float pitch;
+    int ignoreMouseFrames;
 
-    void Start()
+    public void ResetToOrigin()
     {
+        if (origin == null) return;
+        transform.SetPositionAndRotation(origin.position, origin.rotation);
+
+        // Sync internal angles so it won't snap next frame
+        var e = transform.rotation.eulerAngles;
+        yaw = e.y;
+        pitch = e.x;
+        if (pitch > 180f) pitch -= 360f;
+        pitch = Mathf.Clamp(pitch, -89f, 89f);
+
+        ignoreMouseFrames = 2;
+    }
+
+    void OnEnable()
+    {
+        // Sync when enabled (prevents jump)
+        var e = transform.rotation.eulerAngles;
+        yaw = e.y;
+        pitch = e.x;
+        if (pitch > 180f) pitch -= 360f;
+        pitch = Mathf.Clamp(pitch, -89f, 89f);
+
+        ignoreMouseFrames = 2;
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
 
+    void OnDisable()
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+
     void Update()
     {
-        if (Mouse.current == null || Keyboard.current == null)
+        if (Mouse.current == null || Keyboard.current == null) return;
+
+        if (ignoreMouseFrames > 0)
+        {
+            ignoreMouseFrames--;
             return;
+        }
 
         // Mouse look
-        Vector2 mouse = Mouse.current.delta.ReadValue();
-        yaw += mouse.x * lookSpeed;
-        pitch -= mouse.y * lookSpeed;
-        pitch = Mathf.Clamp(pitch, -89f, 89f);
+        if (!CameraSwitcher.UiMode)
+        {
+            Vector2 mouse = Mouse.current.delta.ReadValue();
+            yaw += mouse.x * lookSpeed;
+            pitch -= mouse.y * lookSpeed;
+            pitch = Mathf.Clamp(pitch, -89f, 89f);
 
-        transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
-
+            transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+        }
+        
         // Movement
-        float speed = moveSpeed;
-        if (Keyboard.current.leftShiftKey.isPressed)
-            speed *= fastMultiplier;
+        float speed = moveSpeed * (Keyboard.current.leftShiftKey.isPressed ? fastMultiplier : 1f);
 
         Vector3 move = Vector3.zero;
         if (Keyboard.current.wKey.isPressed) move += transform.forward;
@@ -42,9 +82,9 @@ public class FreeCam : MonoBehaviour
         if (Keyboard.current.eKey.isPressed) move += transform.up;
         if (Keyboard.current.qKey.isPressed) move -= transform.up;
 
-        transform.position += move * speed * Time.deltaTime;
+        if (move.sqrMagnitude > 0f)
+            transform.position += move.normalized * speed * Time.deltaTime;
 
-        // Unlock mouse
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             Cursor.lockState = CursorLockMode.None;
