@@ -3,16 +3,21 @@ using UnityEngine.InputSystem;
 
 public class CameraSwitcher : MonoBehaviour
 {
-    public static bool UiMode { get; private set; }
+    public static bool UiMode { get; private set; }          // desktop: Alt held
+    public static bool IsFirstPerson { get; private set; }   // authoritative mode flag
+
+    [Header("Cameras")]
     public Camera firstPersonCam;
     public Camera birdEyeCam;
 
-    FreeCam birdEyeFreeCam;
+    [Header("3D Mode Controls")]
+    public MonoBehaviour birdEyeController;   // e.g., FreeCam (assign in inspector)
+    public MonoBehaviour poiTapSelector;      // optional: tap POIs / click selection in 3D
 
-    void Awake()
-    {
-        birdEyeFreeCam = birdEyeCam.GetComponentInParent<FreeCam>();
-    }
+    [Header("FP Mode Controls")]
+    public MonoBehaviour mobileLookDrag;      // your MobileLookDrag (or FP look script)
+    public HoldToWalkUI holdToWalkUI;        // HoldToWalkUI (optional to toggle)
+    public RouteFollower routeFollower;       // RouteFollower (kept enabled usually; can leave on)
 
     void Start()
     {
@@ -21,54 +26,68 @@ public class CameraSwitcher : MonoBehaviour
 
     public void ToggleCamera()
     {
-        bool toFirst = !firstPersonCam.enabled;
-        SetFirstPerson(toFirst);
+        SetFirstPerson(!IsFirstPerson);
     }
 
-    private void SetFirstPerson(bool firstPerson)
+    public void SetFirstPerson(bool firstPerson)
     {
-        firstPersonCam.enabled = firstPerson;
-        birdEyeCam.enabled = !firstPerson;
+        IsFirstPerson = firstPerson;
 
-        if (birdEyeFreeCam != null)
-        {
-            if (firstPerson)
-            {
-                birdEyeFreeCam.enabled = false;
-                birdEyeFreeCam.ResetToOrigin();
-            }
-            else
-            {
-                birdEyeFreeCam.ResetToOrigin();
-                birdEyeFreeCam.enabled = true;
-            }
-        }
+        // Cameras
+        if (firstPersonCam) firstPersonCam.enabled = firstPerson;
+        if (birdEyeCam)     birdEyeCam.enabled = !firstPerson;
 
-        // Set the default cursor state for this mode
-        SetCursorForMode(firstPerson);
+        // Enable/disable mode-specific controllers
+        if (birdEyeController) birdEyeController.enabled = !firstPerson;
+        if (poiTapSelector)    poiTapSelector.enabled = !firstPerson;
 
+        if (mobileLookDrag)    mobileLookDrag.enabled = firstPerson;
+        if (holdToWalkUI)      holdToWalkUI.enabled = firstPerson;
+
+        // RouteFollower can stay enabled; it only moves when "moving" is true.
+        // But you can disable it in 3D mode if you prefer:
+        // if (routeFollower) routeFollower.enabled = firstPerson;
+
+        // Audio listeners
         ToggleAudio(firstPersonCam, firstPerson);
         ToggleAudio(birdEyeCam, !firstPerson);
-    }
 
-    private void ToggleAudio(Camera cam, bool on)
-    {
-        var al = cam.GetComponent<AudioListener>();
-        if (al != null) al.enabled = on;
-    }
-
-    void SetCursorForMode(bool firstPerson)
-    {
-        // Default behavior: lock in both modes (Alt will temporarily unlock)
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        // Cursor handling (desktop only)
+        ApplyCursorRules();
     }
 
     void Update()
     {
-        if (Keyboard.current == null) return;
+        // Desktop only: allow Alt to temporarily show cursor for UI interaction
+        if (Keyboard.current != null)
+        {
+            UiMode = Keyboard.current.leftAltKey.isPressed || Keyboard.current.rightAltKey.isPressed;
+            ApplyCursorRules();
+        }
+        else
+        {
+            UiMode = false; // mobile
+        }
+    }
 
-        UiMode = Keyboard.current.leftAltKey.isPressed || Keyboard.current.rightAltKey.isPressed;
+    void ApplyCursorRules()
+    {
+        // Mobile: no cursor
+        if (Mouse.current == null)
+        {
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.None;
+            return;
+        }
+
+        // Desktop: in 3D mode, cursor should generally be available
+        // In FP mode, lock cursor unless UiMode (Alt) is held
+        if (!IsFirstPerson)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            return;
+        }
 
         if (UiMode)
         {
@@ -80,5 +99,12 @@ public class CameraSwitcher : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+    }
+
+    void ToggleAudio(Camera cam, bool on)
+    {
+        if (!cam) return;
+        var al = cam.GetComponent<AudioListener>();
+        if (al != null) al.enabled = on;
     }
 }
