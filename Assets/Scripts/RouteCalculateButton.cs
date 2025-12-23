@@ -35,10 +35,12 @@ public class RouteCalculateButton : MonoBehaviour
     [Header("NavMesh")]
     [SerializeField] private float snapRadius = 1.0f;
 
-    private readonly NavMeshPath tmpPath = new NavMeshPath();
+    private NavMeshPath tmpPath;
 
     void Awake()
     {
+        tmpPath = new NavMeshPath();
+        
         if (!playerAgent) playerAgent = FindObjectOfType<NavMeshAgent>();
         if (!clickToMove && playerAgent) clickToMove = playerAgent.GetComponent<ClickToMove>();
 
