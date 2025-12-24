@@ -8,20 +8,17 @@ public class CameraController : MonoBehaviour
     public CameraMode mode = CameraMode.BirdEye;
 
     [Header("FPS Settings")]
-    public float fpsMoveSpeed = 6f;
-    public float fpsLookSpeed = 0.25f;
+    public float fpsMoveSpeed = 7.5f;
+    public float fpsLookSpeed = 6f;
 
     [Header("BirdEye Settings")]
-    public float panSpeed = 2f;
+    public float panSpeed = 5f;
     public float rotateSpeed = 20f;
     public float zoomSpeed = 1f;
     public float minHeight = 5f;
     public float maxHeight = 60f;
     public float minPitch = 20f;
     public float maxPitch = 80f;
-
-    [Header("Floor Settings")]
-    public List<GameObject> floors;
 
     float yaw;
     float pitch;
@@ -55,8 +52,6 @@ public class CameraController : MonoBehaviour
 #else
         MouseKeyboardControl();
 #endif
-
-        SetFloor();
     }
 
     // ================= MODE =================
@@ -90,7 +85,7 @@ public class CameraController : MonoBehaviour
 
             if (mouse.rightButton.isPressed)
             {
-                Vector2 delta = mouse.delta.ReadValue() * fpsLookSpeed;
+                Vector2 delta = mouse.delta.ReadValue() * fpsLookSpeed * Time.deltaTime;
                 yaw += delta.x;
                 pitch -= delta.y;
                 pitch = Mathf.Clamp(pitch, -80f, 80f);
@@ -201,21 +196,4 @@ public class CameraController : MonoBehaviour
         transform.LookAt(birdPivot);
     }
 
-    // ================= FLOOR =================
-    void SetFloor()
-    {
-        if (floors == null || floors.Count == 0) return;
-        if (Keyboard.current == null) return;
-
-        int index = -1;
-        if (Keyboard.current.digit1Key.wasPressedThisFrame) index = 0;
-        if (Keyboard.current.digit2Key.wasPressedThisFrame) index = 1;
-        if (Keyboard.current.digit3Key.wasPressedThisFrame) index = 2;
-        if (Keyboard.current.digit4Key.wasPressedThisFrame) index = 3;
-
-        if (index < 0 || index >= floors.Count) return;
-
-        for (int i = 0; i < floors.Count; i++)
-            floors[i].SetActive(i == index);
-    }
 }

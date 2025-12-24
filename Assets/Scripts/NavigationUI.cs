@@ -7,7 +7,6 @@ public class NavigationUI : MonoBehaviour
 {
     [Header("List")]
     public Transform floorsRoot;
-    public Transform waypointsRoot;
 
     [Header("UI")]
     public TMP_Dropdown floorsDropdown;
@@ -17,8 +16,14 @@ public class NavigationUI : MonoBehaviour
     [Header("Path")]
     public LineRenderer line;
 
+    [Header("Waypoint Labels")]
+    public TMP_FontAsset labelFont;
+    public float labelHeight = 1f;
+    public float labelSize = 8f;
+
     List<Transform> floors = new();
     List<Transform> points = new();
+    List<GameObject> labels = new();
 
     NavMeshPath path;
 
@@ -30,31 +35,25 @@ public class NavigationUI : MonoBehaviour
         line.material.color = Color.green;
         line.useWorldSpace = true;
         line.sortingOrder = 999;
-        line.alignment = LineAlignment.View;
 
         LoadFloors();
-        LoadWaypoints();
 
         floorsDropdown.onValueChanged.AddListener(_ => UpdateFloor());
-
         fromDropdown.onValueChanged.AddListener(_ => UpdatePath());
         toDropdown.onValueChanged.AddListener(_ => UpdatePath());
-        
+
         UpdateFloor();
     }
 
-    void LoadWaypoints()
+    void LoadWaypoints(Transform waypoints)
     {
-        points.Clear();
-        fromDropdown.ClearOptions();
-        toDropdown.ClearOptions();
-
         List<string> names = new();
 
-        foreach (Transform t in waypointsRoot)
+        foreach (Transform t in waypoints)
         {
             points.Add(t);
             names.Add(t.name);
+            labels.Add(CreateLabel(t));
         }
 
         fromDropdown.AddOptions(names);
@@ -64,7 +63,11 @@ public class NavigationUI : MonoBehaviour
     void LoadFloors()
     {
         floors.Clear();
+        points.Clear();
+        labels.Clear();
         floorsDropdown.ClearOptions();
+        fromDropdown.ClearOptions();
+        toDropdown.ClearOptions();
 
         List<string> names = new();
 
@@ -72,21 +75,34 @@ public class NavigationUI : MonoBehaviour
         {
             floors.Add(t);
             names.Add(t.name);
+            Transform waypoints = t.Find("Waypoints");
+            if (waypoints != null)
+                LoadWaypoints(waypoints);
         }
 
         floorsDropdown.AddOptions(names);
     }
-    
+
     void UpdateFloor()
     {
         int index = floorsDropdown.value;
 
         for (int i = 0; i < floors.Count; i++)
         {
-            floors[i].gameObject.SetActive(i == index);
+            bool active = (i == index);
+            floors[i].gameObject.SetActive(active);
         }
 
+        UpdateLabelsVisibility();
         UpdatePath();
+    }
+
+    void UpdateLabelsVisibility()
+    {
+        foreach (var label in labels)
+        {
+            label.SetActive(label.transform.root.gameObject.activeSelf);
+        }
     }
 
     public void UpdatePath()
@@ -94,21 +110,33 @@ public class NavigationUI : MonoBehaviour
         int from = fromDropdown.value;
         int to = toDropdown.value;
 
-        if (from == to) return;
+        if (from == to || points.Count == 0) return;
 
         Vector3 start = points[from].position;
         Vector3 end = points[to].position;
-        
-        Debug.Log($"Navigate from {start} to {end}");
-        Debug.Log($"CalculatePath: {NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path)}");
-        Debug.Log($"PathStatus: {path.status}");
-        Debug.Log($"Corners: {path.corners.Length}");
-
 
         if (NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
         {
             line.positionCount = path.corners.Length;
             line.SetPositions(path.corners);
         }
+    }
+
+    GameObject CreateLabel(Transform wp)
+    {
+        GameObject go = new GameObject("Label_" + wp.name);
+        go.transform.SetParent(wp);
+        go.transform.localPosition = Vector3.up * labelHeight;
+
+        var text = go.AddComponent<TextMeshPro>();
+        text.text = wp.name;
+        text.font = labelFont;
+        text.fontSize = labelSize;
+        text.color = Color.white;
+        text.alignment = TextAlignmentOptions.Center;
+        text.enableWordWrapping = false;
+
+        go.AddComponent<Billboard>();
+        return go;
     }
 }
