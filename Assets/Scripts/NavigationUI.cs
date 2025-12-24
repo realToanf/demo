@@ -100,6 +100,10 @@ public class NavigationUI : MonoBehaviour
         Vector3 end = points[to].position;
         
         Debug.Log($"Navigate from {start} to {end}");
+        Debug.Log($"CalculatePath: {NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path)}");
+        Debug.Log($"PathStatus: {path.status}");
+        Debug.Log($"Corners: {path.corners.Length}");
+
 
         if (NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
         {
