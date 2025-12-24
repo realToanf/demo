@@ -21,6 +21,8 @@ public class NavigationUI : MonoBehaviour
     public float labelHeight = 1f;
     public float labelSize = 8f;
 
+    public Transform mainCamera;
+
     List<Transform> floors = new();
     List<Transform> points = new();
     List<GameObject> labels = new();
@@ -94,7 +96,7 @@ public class NavigationUI : MonoBehaviour
         }
 
         UpdateLabelsVisibility();
-        UpdatePath();
+        // UpdatePath();
     }
 
     void UpdateLabelsVisibility()
@@ -120,6 +122,8 @@ public class NavigationUI : MonoBehaviour
             line.positionCount = path.corners.Length;
             line.SetPositions(path.corners);
         }
+
+        mainCamera.GetComponent<CameraController>().MoveBirdEyeFromTo(points[from], points[to]);
     }
 
     GameObject CreateLabel(Transform wp)

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -13,12 +14,17 @@ public class CameraController : MonoBehaviour
 
     [Header("BirdEye Settings")]
     public float panSpeed = 5f;
-    public float rotateSpeed = 20f;
+    public float rotateSpeed = 15f;
     public float zoomSpeed = 1f;
     public float minHeight = 5f;
     public float maxHeight = 60f;
     public float minPitch = 20f;
     public float maxPitch = 80f;
+
+    public float height = 15f;
+    public float moveSpeed = 3f;
+
+    bool lockCamera = false;
 
     float yaw;
     float pitch;
@@ -27,9 +33,13 @@ public class CameraController : MonoBehaviour
 
     float lastTouchDist;
 
+    Coroutine moveRoutine;
+    UnityEngine.AI.NavMeshPath path;
+
     void Awake()
     {
         Application.targetFrameRate = 120;
+        path = new UnityEngine.AI.NavMeshPath();
     }
 
     void Start()
@@ -196,4 +206,68 @@ public class CameraController : MonoBehaviour
         transform.LookAt(birdPivot);
     }
 
+    public void MoveBirdEyeFromTo(Transform from, Transform to)
+    {
+        if (from == null || to == null) return;
+
+        if (moveRoutine != null)
+            StopCoroutine(moveRoutine);
+
+        Vector3 start = ProjectToNavMesh(from.position);
+        Vector3 end   = ProjectToNavMesh(to.position);
+
+        if (!UnityEngine.AI.NavMesh.CalculatePath(start, end, UnityEngine.AI.NavMesh.AllAreas, path))
+        {
+            Debug.LogError("NavMesh path failed");
+            return;
+        }
+
+        moveRoutine = StartCoroutine(MoveRoutine(path.corners));
+    }
+    // =================================================
+
+    IEnumerator MoveRoutine(Vector3[] corners)
+    {
+        if (corners.Length < 2) yield break;
+
+        // đặt camera lên cao, nhìn xuống
+        transform.position = corners[0] + Vector3.up * height;
+        transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+        for (int i = 1; i < corners.Length; i++)
+        {
+            Vector3 target = corners[i] + Vector3.up * height;
+
+            while (Vector3.Distance(transform.position, target) > 0.05f)
+            {
+                transform.position = Vector3.MoveTowards(
+                    transform.position,
+                    target,
+                    moveSpeed * Time.deltaTime
+                );
+
+                // nhìn về hướng di chuyển (xoay Y nhẹ)
+                Vector3 dir = corners[i] - transform.position;
+                dir.y = 0;
+                if (dir.sqrMagnitude > 0.01f)
+                {
+                    Quaternion look = Quaternion.LookRotation(dir);
+                    transform.rotation = Quaternion.Slerp(
+                        transform.rotation,
+                        Quaternion.Euler(90f, look.eulerAngles.y, 0),
+                        rotateSpeed * Time.deltaTime
+                    );
+                }
+
+                yield return null;
+            }
+        }
+    }
+
+    Vector3 ProjectToNavMesh(Vector3 pos)
+    {
+        if (UnityEngine.AI.NavMesh.SamplePosition(pos, out UnityEngine.AI.NavMeshHit hit, 2f, UnityEngine.AI.NavMesh.AllAreas))
+            return hit.position;
+        return pos;
+    }
 }
