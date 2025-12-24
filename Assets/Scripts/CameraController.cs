@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System;
 
 public class CameraController : MonoBehaviour
 {
@@ -206,7 +207,7 @@ public class CameraController : MonoBehaviour
         transform.LookAt(birdPivot);
     }
 
-    public void MoveBirdEyeFromTo(Transform from, Transform to)
+    public void MoveBirdEyeFromTo(Transform from, Transform to, Action onComplete = null)
     {
         if (from == null || to == null) return;
 
@@ -222,11 +223,11 @@ public class CameraController : MonoBehaviour
             return;
         }
 
-        moveRoutine = StartCoroutine(MoveRoutine(path.corners));
+        moveRoutine = StartCoroutine(MoveRoutine(path.corners, onComplete));
     }
     // =================================================
 
-    IEnumerator MoveRoutine(Vector3[] corners)
+    IEnumerator MoveRoutine(Vector3[] corners, Action onComplete)
     {
         if (corners.Length < 2) yield break;
 
@@ -262,6 +263,8 @@ public class CameraController : MonoBehaviour
                 yield return null;
             }
         }
+
+        onComplete?.Invoke();
     }
 
     Vector3 ProjectToNavMesh(Vector3 pos)

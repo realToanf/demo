@@ -29,6 +29,9 @@ public class NavigationUI : MonoBehaviour
 
     NavMeshPath path;
 
+    private int selectedFrom = -1;
+    private int selectedTo = -1;
+
     void Start()
     {
         path = new NavMeshPath();
@@ -41,8 +44,8 @@ public class NavigationUI : MonoBehaviour
         LoadFloors();
 
         floorsDropdown.onValueChanged.AddListener(_ => UpdateFloor());
-        fromDropdown.onValueChanged.AddListener(_ => UpdatePath());
-        toDropdown.onValueChanged.AddListener(_ => UpdatePath());
+        fromDropdown.onValueChanged.AddListener(_ => { UpdateSelection(); PreviewPath(); });
+        toDropdown.onValueChanged.AddListener(_ => { UpdateSelection(); PreviewPath(); });
 
         UpdateFloor();
     }
@@ -77,6 +80,7 @@ public class NavigationUI : MonoBehaviour
         {
             floors.Add(t);
             names.Add(t.name);
+
             Transform waypoints = t.Find("Waypoints");
             if (waypoints != null)
                 LoadWaypoints(waypoints);
@@ -96,7 +100,13 @@ public class NavigationUI : MonoBehaviour
         }
 
         UpdateLabelsVisibility();
-        // UpdatePath();
+        PreviewPath();
+    }
+
+    void UpdateSelection()
+    {
+        selectedFrom = fromDropdown.value;
+        selectedTo = toDropdown.value;
     }
 
     void UpdateLabelsVisibility()
@@ -107,12 +117,18 @@ public class NavigationUI : MonoBehaviour
         }
     }
 
-    public void UpdatePath()
+    public void PreviewPath()
     {
+        if (points.Count == 0) return;
+
         int from = fromDropdown.value;
         int to = toDropdown.value;
 
-        if (from == to || points.Count == 0) return;
+        if (from == to)
+        {
+            ClearPath();
+            return;
+        }
 
         Vector3 start = points[from].position;
         Vector3 end = points[to].position;
@@ -122,8 +138,29 @@ public class NavigationUI : MonoBehaviour
             line.positionCount = path.corners.Length;
             line.SetPositions(path.corners);
         }
+        else
+        {
+            ClearPath();
+        }
+    }
 
-        mainCamera.GetComponent<CameraController>().MoveBirdEyeFromTo(points[from], points[to]);
+    // Call this from the UI Button
+    public void StartNavigation()
+    {
+        if (points.Count == 0) return;
+
+        selectedFrom = fromDropdown.value;
+        selectedTo = toDropdown.value;
+
+        if (selectedFrom == selectedTo) return;
+
+            mainCamera.GetComponent<CameraController>()
+        .MoveBirdEyeFromTo(points[selectedFrom], points[selectedTo], ClearPath);
+    }
+
+    void ClearPath()
+    {
+        line.positionCount = 0;
     }
 
     GameObject CreateLabel(Transform wp)
