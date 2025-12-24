@@ -147732,6 +147732,8 @@ MonoBehaviour:
   maxHeight: 60
   minPitch: 20
   maxPitch: 80
+  height: 15
+  moveSpeed: 3
 --- !u!135 &632689005
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -320390,6 +320392,7 @@ MonoBehaviour:
   labelFont: {fileID: 0}
   labelHeight: 1
   labelSize: 8
+  mainCamera: {fileID: 632689000}
 --- !u!1001 &2110517939
 PrefabInstance:
   m_ObjectHideFlags: 0
