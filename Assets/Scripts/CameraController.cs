@@ -17,13 +17,13 @@ public class CameraController : MonoBehaviour
     public float panSpeed = 5f;
     public float rotateSpeed = 15f;
     public float zoomSpeed = 1f;
-    public float minHeight = 5f;
-    public float maxHeight = 60f;
+    public float minHeight = 2f;
+    public float maxHeight = 90f;
     public float minPitch = 20f;
     public float maxPitch = 80f;
 
-    public float height = 15f;
-    public float moveSpeed = 3f;
+    public float height = 50f;
+    public float moveSpeed = 16f;
 
     bool lockCamera = false;
 
@@ -52,6 +52,8 @@ public class CameraController : MonoBehaviour
 
     void Update()
     {
+        if(lockCamera) return;
+
         if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
         {
             Debug.Log("Toggle mode");
@@ -207,7 +209,12 @@ public class CameraController : MonoBehaviour
         transform.LookAt(birdPivot);
     }
 
-    public void MoveBirdEyeFromTo(Transform from, Transform to, Action onComplete = null, Action<Vector3> onStep = null)
+    public void MoveBirdEyeFromTo(
+        Transform from,
+        Transform to,
+        Action onComplete = null,
+        Action<Vector3> onStep = null
+    )
     {
         if (from == null || to == null) return;
 
@@ -223,25 +230,58 @@ public class CameraController : MonoBehaviour
             return;
         }
 
-        moveRoutine = StartCoroutine(MoveRoutine(path.corners, onComplete, onStep));
+        moveRoutine = StartCoroutine(
+            MoveRoutine(path.corners, onComplete, onStep)
+        );
     }
+
     // =================================================
-
-    IEnumerator MoveRoutine(Vector3[] corners, Action onComplete, Action<Vector3> onStep)
+    IEnumerator MoveRoutine(
+        Vector3[] corners,
+        Action onComplete,
+        Action<Vector3> onStep
+    )
     {
-        if (corners.Length < 2) yield break;
+        lockCamera = true;
 
-        // đặt camera lên cao, nhìn xuống
-        transform.position = corners[0] + Vector3.up * height;
-        transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        // lưu trạng thái ban đầu
+        Vector3 originPos = transform.position;
+        Quaternion originRot = transform.rotation;
 
-        onStep?.Invoke(corners[0]);
+        if (corners.Length < 2)
+        {
+            lockCamera = false;
+            yield break;
+        }
 
+        // ======================
+        // 1️⃣ BAY LÊN CAO
+        // ======================
+        Vector3 liftTarget = corners[0] + Vector3.up * height;
+        Quaternion topDownRot = Quaternion.Euler(90f, 0f, 0f);
+
+        while (Vector3.Distance(transform.position, liftTarget) > 0.05f)
+        {
+            transform.position = Vector3.MoveTowards(
+                transform.position,
+                liftTarget,
+                moveSpeed * Time.deltaTime
+            );
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                topDownRot,
+                rotateSpeed * Time.deltaTime
+            );
+            yield return null;
+        }
+
+        // ======================
+        // 2️⃣ DI CHUYỂN THEO PATH
+        // ======================
         for (int i = 1; i < corners.Length; i++)
         {
-            onStep?.Invoke(corners[i]);
-
             Vector3 target = corners[i] + Vector3.up * height;
+            onStep?.Invoke(corners[i]);
 
             while (Vector3.Distance(transform.position, target) > 0.05f)
             {
@@ -251,26 +291,68 @@ public class CameraController : MonoBehaviour
                     moveSpeed * Time.deltaTime
                 );
 
+                // xoay nhẹ theo hướng di chuyển (Y)
+                // Vector3 dir = corners[i] - transform.position;
+                // dir.y = 0;
+                // if (dir.sqrMagnitude > 0.01f)
+                // {
+                //     Quaternion look = Quaternion.LookRotation(dir);
+                //     Quaternion birdRot = Quaternion.Euler(90f, look.eulerAngles.y, 0);
+                //     transform.rotation = Quaternion.Slerp(
+                //         transform.rotation,
+                //         birdRot,
+                //         rotateSpeed * Time.deltaTime
+                //     );
+                // }
+
                 onStep?.Invoke(transform.position - Vector3.up * height);
-
-                // nhìn về hướng di chuyển (xoay Y nhẹ)
-                Vector3 dir = corners[i] - transform.position;
-                dir.y = 0;
-                if (dir.sqrMagnitude > 0.01f)
-                {
-                    Quaternion look = Quaternion.LookRotation(dir);
-                    transform.rotation = Quaternion.Slerp(
-                        transform.rotation,
-                        Quaternion.Euler(90f, look.eulerAngles.y, 0),
-                        rotateSpeed * Time.deltaTime
-                    );
-                }
-
                 yield return null;
             }
         }
 
+        // ======================
+        // 3️⃣ VIEW TỔNG QUAN (CHÉO)
+        // ======================
+        Vector3 startPoint = corners[0];
+        Vector3 endPoint   = corners[corners.Length - 1];
+
+        // điểm giữa
+        Vector3 center = (startPoint + endPoint) * 0.5f;
+
+        // hướng từ start → end (ĐỔI TÊN)
+        Vector3 pathDir = (endPoint - startPoint).normalized;
+
+        // offset chéo
+        Vector3 overviewOffset =
+            -pathDir * 10f +
+            Vector3.up * height;
+
+        Vector3 overviewPos = center + overviewOffset;
+
+        Quaternion overviewRot = Quaternion.LookRotation(
+            center - overviewPos,
+            Vector3.up
+        );
+
+        while (Vector3.Distance(transform.position, overviewPos) > 0.05f)
+        {
+            transform.position = Vector3.MoveTowards(
+                transform.position,
+                overviewPos,
+                moveSpeed * Time.deltaTime
+            );
+
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                overviewRot,
+                rotateSpeed * Time.deltaTime
+            );
+
+            yield return null;
+        }
+
         onComplete?.Invoke();
+        lockCamera = false;
     }
 
     Vector3 ProjectToNavMesh(Vector3 pos)

@@ -93,7 +93,6 @@ public class NavigationUI : MonoBehaviour
         UpdateFloor();
     }
 
-
     void LoadWaypoints(Transform waypoints)
     {
         List<string> names = new();
@@ -209,9 +208,7 @@ public class NavigationUI : MonoBehaviour
         selectedTo = toDropdown.value;
 
         if (selectedFrom == selectedTo) return;
-
-            mainCamera.GetComponent<CameraController>()
-        .MoveBirdEyeFromTo(points[selectedFrom], points[selectedTo], ClearPath, pos => ActivateFloorByY(pos.y));
+            mainCamera.GetComponent<CameraController>().MoveBirdEyeFromTo(points[selectedFrom], points[selectedTo], null, pos => ActivateFloorByY(pos.y));
     }
 
     void ClearPath()
