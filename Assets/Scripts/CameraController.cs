@@ -207,7 +207,7 @@ public class CameraController : MonoBehaviour
         transform.LookAt(birdPivot);
     }
 
-    public void MoveBirdEyeFromTo(Transform from, Transform to, Action onComplete = null)
+    public void MoveBirdEyeFromTo(Transform from, Transform to, Action onComplete = null, Action<Vector3> onStep = null)
     {
         if (from == null || to == null) return;
 
@@ -223,11 +223,11 @@ public class CameraController : MonoBehaviour
             return;
         }
 
-        moveRoutine = StartCoroutine(MoveRoutine(path.corners, onComplete));
+        moveRoutine = StartCoroutine(MoveRoutine(path.corners, onComplete, onStep));
     }
     // =================================================
 
-    IEnumerator MoveRoutine(Vector3[] corners, Action onComplete)
+    IEnumerator MoveRoutine(Vector3[] corners, Action onComplete, Action<Vector3> onStep)
     {
         if (corners.Length < 2) yield break;
 
@@ -235,8 +235,12 @@ public class CameraController : MonoBehaviour
         transform.position = corners[0] + Vector3.up * height;
         transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
+        onStep?.Invoke(corners[0]);
+
         for (int i = 1; i < corners.Length; i++)
         {
+            onStep?.Invoke(corners[i]);
+
             Vector3 target = corners[i] + Vector3.up * height;
 
             while (Vector3.Distance(transform.position, target) > 0.05f)
@@ -246,6 +250,8 @@ public class CameraController : MonoBehaviour
                     target,
                     moveSpeed * Time.deltaTime
                 );
+
+                onStep?.Invoke(transform.position - Vector3.up * height);
 
                 // nhìn về hướng di chuyển (xoay Y nhẹ)
                 Vector3 dir = corners[i] - transform.position;

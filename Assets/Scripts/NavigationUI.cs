@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using TMPro;
 using UnityEngine.AI;
@@ -31,17 +32,59 @@ public class NavigationUI : MonoBehaviour
 
     private int selectedFrom = -1;
     private int selectedTo = -1;
+    public Material lineMaterial;
 
-    void Start()
+    IEnumerator Start()
     {
+        yield return null;
+
+        AutoAssignIfNull();
+
+        if (floorsRoot == null)
+        {
+            Debug.LogError("NavigationUI: floorsRoot is NULL (Environment not found).");
+            yield break;
+        }
+
+        if (floorsDropdown == null || fromDropdown == null || toDropdown == null)
+        {
+            Debug.LogError("NavigationUI: Dropdown references are NULL.");
+            yield break;
+        }
+
+        if (mainCamera == null)
+        {
+            Debug.LogError("NavigationUI: mainCamera is NULL.");
+            yield break;
+        }
+
         path = new NavMeshPath();
 
-        line.material = new Material(Shader.Find("Unlit/Color"));
+        // Setup line renderer material safely
+        if (line == null)
+        {
+            Debug.LogError("NavigationUI: LineRenderer is NULL.");
+            yield break;
+        }
+
+        if (lineMaterial != null)
+        {
+            line.material = lineMaterial;
+        }
+        else if (line.material == null)
+        {
+            Debug.LogError("NavigationUI: lineMaterial is NULL and LineRenderer has no material. Assign a URP Unlit material in Inspector.");
+            yield break;
+        }
+
         line.material.color = Color.green;
         line.useWorldSpace = true;
         line.sortingOrder = 999;
+        line.positionCount = 0;
 
         LoadFloors();
+
+        BuildFloorRanges();
 
         floorsDropdown.onValueChanged.AddListener(_ => UpdateFloor());
         fromDropdown.onValueChanged.AddListener(_ => { UpdateSelection(); PreviewPath(); });
@@ -49,6 +92,7 @@ public class NavigationUI : MonoBehaviour
 
         UpdateFloor();
     }
+
 
     void LoadWaypoints(Transform waypoints)
     {
@@ -87,6 +131,18 @@ public class NavigationUI : MonoBehaviour
         }
 
         floorsDropdown.AddOptions(names);
+    }
+
+    void AutoAssignIfNull()
+    {
+        if (floorsRoot == null)
+        {
+            var env = GameObject.Find("Environment");
+            if (env != null) floorsRoot = env.transform;
+        }
+
+        if (mainCamera == null && Camera.main != null)
+            mainCamera = Camera.main.transform;
     }
 
     void UpdateFloor()
@@ -155,7 +211,7 @@ public class NavigationUI : MonoBehaviour
         if (selectedFrom == selectedTo) return;
 
             mainCamera.GetComponent<CameraController>()
-        .MoveBirdEyeFromTo(points[selectedFrom], points[selectedTo], ClearPath);
+        .MoveBirdEyeFromTo(points[selectedFrom], points[selectedTo], ClearPath, pos => ActivateFloorByY(pos.y));
     }
 
     void ClearPath()
@@ -179,5 +235,68 @@ public class NavigationUI : MonoBehaviour
 
         go.AddComponent<Billboard>();
         return go;
+    }
+
+    struct FloorRange
+    {
+        public Transform floor;
+        public float minY;
+        public float maxY;
+    }
+    List<FloorRange> floorRanges = new();
+
+    void ActivateFloorByY(float y)
+    {
+        int bestIndex = -1;
+
+        for (int i = 0; i < floorRanges.Count; i++)
+        {
+            if (y >= floorRanges[i].minY && y <= floorRanges[i].maxY)
+            {
+                bestIndex = i;
+                break;
+            }
+        }
+
+        if (bestIndex < 0) return;
+        if (floorsDropdown.value == bestIndex) return;
+
+        floorsDropdown.value = bestIndex;
+
+        for (int i = 0; i < floors.Count; i++)
+            floors[i].gameObject.SetActive(i == bestIndex);
+
+        UpdateLabelsVisibility();
+        Debug.Log($"ActivateFloorByY y={y}");
+    }
+
+
+    void BuildFloorRanges()
+    {
+        floorRanges.Clear();
+
+        float threshold = 1.7f; // (3.45/2) ~ 1.725
+
+        for (int i = 0; i < floors.Count; i++)
+        {
+            Transform floor = floors[i];
+
+            float y = floors[i].position.y;
+
+            Transform waypoints = floor.Find("Waypoints");
+            if (waypoints != null && waypoints.childCount > 0)
+            {
+                y = waypoints.GetChild(0).position.y;
+            }
+
+            floorRanges.Add(new FloorRange
+            {
+                floor = floors[i],
+                minY = y - threshold,
+                maxY = y + threshold
+            });
+
+            Debug.Log($"Floor[{i}] {floors[i].name}: y={y}, range=({y - threshold} -> {y + threshold})");
+        }
     }
 }
