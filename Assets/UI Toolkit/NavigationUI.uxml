@@ -1,0 +1,25 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI%20Toolkit/NavigationUI.uss?fileID=7433441132597879392&amp;guid=7bb56356fbf6e144aa85a6694b08e62c&amp;type=3#NavigationUI"/>
+    <ui:VisualElement class="root">
+        <ui:VisualElement class="card">
+            <ui:VisualElement class="header">
+                <ui:Label text="Ch&#7881; &#273;&#432;&#7901;ng" class="title"/>
+                <ui:Button text="&#9881;" name="settingsBtn" class="iconBtn"/>
+            </ui:VisualElement>
+            <ui:VisualElement class="field">
+                <ui:Label text="B&#7855;t &#273;&#7847;u t&#7915; ph&#242;ng" class="label"/>
+                <ui:DropdownField name="fromDropdown" class="dropdown"/>
+            </ui:VisualElement>
+            <ui:VisualElement class="field">
+                <ui:Label text="T&#7899;i ph&#242;ng" class="label"/>
+                <ui:DropdownField name="toDropdown" class="dropdown"/>
+            </ui:VisualElement>
+            <ui:Button text="B&#7855;t &#273;&#7847;u &#273;i" name="navigateBtn" class="cta"/>
+            <ui:VisualElement class="divider"/>
+            <ui:VisualElement class="field">
+                <ui:Label text="Ch&#7885;n t&#7847;ng" class="label"/>
+                <ui:DropdownField name="floorDropdown" class="dropdown"/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

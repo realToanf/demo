@@ -117576,7 +117576,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &318604852
 RectTransform:
   m_ObjectHideFlags: 0
@@ -145193,6 +145193,76 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: af2e55e008db8904cb384a12ebb8b051, type: 3}
   m_PrefabInstance: {fileID: 506135990}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &506348507
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 506348508}
+  - component: {fileID: 506348509}
+  - component: {fileID: 506348510}
+  m_Layer: 5
+  m_Name: NavigationUIDocument
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &506348508
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 506348507}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2110044428}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &506348509
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 506348507}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.UIElements.UIDocument
+  m_PanelSettings: {fileID: 11400000, guid: 4f4bc2683ea5f53448af2703914c393d, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: 5f2cab6cb32c0f043ac333f668e989d9, type: 3}
+  m_SortingOrder: 0
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
+--- !u!114 &506348510
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 506348507}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f34372bb1ad76843b415e82cc2895fd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NavigationUITKBridge
+  nav: {fileID: 2110044429}
+  doc: {fileID: 506348509}
 --- !u!1 &510100494
 GameObject:
   m_ObjectHideFlags: 0
@@ -147980,12 +148050,12 @@ MonoBehaviour:
   fpsMoveSpeed: 7.5
   fpsLookSpeed: 6
   rotateSpeed: 15
-  minHeight: 2
+  minHeight: 6
   maxHeight: 90
   minPitch: 20
   maxPitch: 80
   panSensitivity: 0.001
-  zoomSensitivity: 90
+  zoomSensitivity: 30
   zoomMinDist: 5
   zoomMaxDist: 250
   invertScrollZoom: 0
@@ -151248,7 +151318,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &792606008
 RectTransform:
   m_ObjectHideFlags: 0
@@ -154375,7 +154445,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &996166602
 RectTransform:
   m_ObjectHideFlags: 0
@@ -317456,7 +317526,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2017060467
 RectTransform:
   m_ObjectHideFlags: 0
@@ -321432,6 +321502,7 @@ RectTransform:
   - {fileID: 2017060467}
   - {fileID: 1432212850}
   - {fileID: 2063593329}
+  - {fileID: 506348508}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
