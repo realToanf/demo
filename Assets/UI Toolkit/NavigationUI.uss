@@ -74,3 +74,17 @@
     margin-top: 16px;
     margin-bottom: 6px;
 }
+
+.dropdown,
+.dropdown .unity-base-field__input,
+.dropdown .unity-base-field__text,
+.dropdown .unity-popup-field__input {
+    background-color: rgb(255,255,255);
+}
+
+.dropdown .unity-base-field__input,
+.dropdown .unity-popup-field__input {
+    border-width: 0px;
+    outline-width: 0px;
+    box-shadow: none;
+}
