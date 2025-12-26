@@ -22,7 +22,7 @@ public class NavigationController : MonoBehaviour
     public Transform mainCamera;
 
     // ----- Public state (for UI Toolkit) -----
-    public IReadOnlyList<string> FloorNames => floorNames;
+    public IReadOnlyList<string> FloorNames => floorDropdownOptions;
 
     // ✅ IMPORTANT: UI sees ALL points across ALL floors
     public IReadOnlyList<string> ActivePointNames => allPointNames;
@@ -36,6 +36,7 @@ public class NavigationController : MonoBehaviour
     public event Action SelectionChanged;
 
     // Floors
+
     private readonly List<Transform> floors = new();
     private readonly List<string> floorNames = new();
 
@@ -55,6 +56,11 @@ public class NavigationController : MonoBehaviour
     private readonly HashSet<int> visibleFloors = new();
 
     public bool IsFloorVisible(int index) => visibleFloors.Contains(index);
+    public bool ShowAllFloors { get; private set; } = false;
+    public IReadOnlyList<string> FloorDropdownOptions => floorDropdownOptions;
+    private readonly List<string> floorDropdownOptions = new();
+    public int SelectedFloorDropdownIndex { get; private set; } = 1;
+
 
     // Floor ranges for auto switching during camera movement
     struct FloorRange
@@ -106,6 +112,7 @@ public class NavigationController : MonoBehaviour
 
         // Load floors + ALL waypoints (including inactive ones)
         LoadFloorsAndWaypoints();
+        BuildFloorDropdownOptions();
         BuildFloorRanges();
 
         FloorsChanged?.Invoke();
@@ -120,6 +127,12 @@ public class NavigationController : MonoBehaviour
         PreviewPath();
     }
 
+    void BuildFloorDropdownOptions()
+    {
+        floorDropdownOptions.Clear();
+        floorDropdownOptions.Add("Tất cả các tầng");
+        floorDropdownOptions.AddRange(floorNames);
+    }
     void AutoAssignIfNull()
     {
         if (floorsRoot == null)
@@ -210,6 +223,7 @@ public class NavigationController : MonoBehaviour
     // ✅ Single-floor mode API
     public void SetFloor(int index)
     {
+        if (ShowAllFloors) return; 
         if (floors.Count == 0) return;
 
         index = Mathf.Clamp(index, 0, floors.Count - 1);
@@ -224,6 +238,22 @@ public class NavigationController : MonoBehaviour
 
         ActiveFloorChanged?.Invoke();
         PreviewPath();
+    }
+
+    public void SetFloorFromDropdown(int dropdownIndex)
+    {
+        dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
+        SelectedFloorDropdownIndex = dropdownIndex;
+
+        if (dropdownIndex == 0)
+        {
+            SetShowAllFloors(true);
+        }
+        else
+        {
+            SetShowAllFloors(false);
+            SetFloor(dropdownIndex - 1); // because floor list starts at index 0
+        }
     }
 
     // (Optional, kept for compatibility, but not used in single-floor mode)
@@ -258,7 +288,8 @@ public class NavigationController : MonoBehaviour
             SelectedTo = (SelectedFrom == 0) ? 1 : 0;
 
         // ✅ show floor of selected point
-        SetFloor(allPointFloorIndex[SelectedFrom]);
+        if (!ShowAllFloors)
+            SetFloor(allPointFloorIndex[SelectedFrom]);
 
         SelectionChanged?.Invoke();
         PreviewPath();
@@ -274,7 +305,8 @@ public class NavigationController : MonoBehaviour
             SelectedFrom = (SelectedTo == 0) ? 1 : 0;
 
         // ✅ show floor of selected point
-        SetFloor(allPointFloorIndex[SelectedTo]);
+        if (!ShowAllFloors)
+            SetFloor(allPointFloorIndex[SelectedTo]);
 
         SelectionChanged?.Invoke();
         PreviewPath();
@@ -389,6 +421,7 @@ public class NavigationController : MonoBehaviour
 
     void ActivateFloorByY(float y)
     {
+        if (ShowAllFloors) return;
         int bestIndex = -1;
 
         for (int i = 0; i < floorRanges.Count; i++)
@@ -404,5 +437,28 @@ public class NavigationController : MonoBehaviour
         if (ActiveFloorIndex == bestIndex) return;
 
         SetFloor(bestIndex);
+    }
+
+    void SetShowAllFloors(bool enabled)
+    {
+        ShowAllFloors = enabled; 
+        visibleFloors.Clear();
+
+        if (enabled)
+        {
+            for (int i = 0; i < floors.Count; i++)
+                visibleFloors.Add(i);
+        }
+        else
+        {
+            visibleFloors.Add(ActiveFloorIndex);
+        }
+
+        ApplyVisibleFloors();
+
+        // ActiveFloorChanged?.Invoke();
+        FloorsChanged?.Invoke();
+        
+        PreviewPath();
     }
 }

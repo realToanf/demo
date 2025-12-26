@@ -25,6 +25,11 @@ public class CameraController : MonoBehaviour
     public float height = 50f;
     public float moveSpeed = 16f;
 
+    [Header("Touch Settings")]
+    public float touchPanMultiplier = 10f; // Multiplier for touch pan sensitivity
+    public float touchZoomSensitivity = 0.036f; // Sensitivity for pinch zoom
+    public float gestureThreshold = 5f; // Minimum pixel movement to detect gesture
+
     bool lockCamera = false;
 
     float yaw;
@@ -33,6 +38,7 @@ public class CameraController : MonoBehaviour
     Vector3 birdPivot;
 
     float lastTouchDist;
+    Vector2 lastTwoFingerCenter; // Track center point of two-finger gesture
 
     Coroutine moveRoutine;
     UnityEngine.AI.NavMeshPath path;
@@ -60,11 +66,9 @@ public class CameraController : MonoBehaviour
             ToggleMode();
         }
 
-#if UNITY_ANDROID || UNITY_IOS
         TouchControl();
-#else
+
         MouseKeyboardControl();
-#endif
     }
 
     // ================= MODE =================
@@ -135,7 +139,6 @@ public class CameraController : MonoBehaviour
             float scroll = mouse.scroll.ReadValue().y;
             if (Mathf.Abs(scroll) > 0.01f)
             {
-                Debug.Log(scroll);
                 Vector3 dir = transform.forward;
                 Vector3 newPos = transform.position + dir * scroll * zoomSpeed;
 
@@ -160,51 +163,122 @@ public class CameraController : MonoBehaviour
 
         var touches = ts.touches;
 
-        // 1 finger PAN
-        if (touches.Count == 1 && touches[0].isInProgress)
+        // Count active touches
+        int activeTouchCount = 0;
+        for (int i = 0; i < touches.Count; i++)
         {
-            Vector2 delta = touches[0].delta.ReadValue();
-            Vector3 right = transform.right;
-            Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
-
-            Vector3 move = (-right * delta.x - forward * delta.y) * panSpeed * 50f;
-            transform.position += move;
-            birdPivot += move;
+            if (touches[i].isInProgress)
+                activeTouchCount++;
         }
 
-        // 2 fingers ROTATE + ZOOM
-        if (touches.Count >= 2 &&
-            touches[0].isInProgress &&
-            touches[1].isInProgress)
+        // ========================================
+        // 1️⃣ ONE FINGER - ROTATE CAMERA
+        // ========================================
+        if (activeTouchCount == 1)
         {
-            Vector2 p0 = touches[0].position.ReadValue();
-            Vector2 p1 = touches[1].position.ReadValue();
-            float dist = Vector2.Distance(p0, p1);
-
-            if (lastTouchDist > 0)
+            // Find the active touch
+            var touch = touches[0].isInProgress ? touches[0] : touches[1];
+            
+            // Only process if touch is actively moving
+            if (touch.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Moved)
             {
-                float zoomDelta = dist - lastTouchDist;
-                Vector3 newPos = transform.position + transform.forward * zoomDelta * zoomSpeed;
+                Vector2 delta = touch.delta.ReadValue();
+                
+                // Ignore very small movements (noise filtering)
+                if (delta.magnitude < 0.1f) return;
+
+                // Horizontal rotation (yaw) around birdPivot
+                transform.RotateAround(birdPivot, Vector3.up, delta.x * rotateSpeed * Time.deltaTime);
+
+                // Vertical rotation (pitch)
+                currentPitch -= delta.y * rotateSpeed * Time.deltaTime;
+                currentPitch = Mathf.Clamp(currentPitch, minPitch, maxPitch);
+
+                UpdateBirdCamera();
+            }
+        }
+
+        // ========================================
+        // 2️⃣ TWO FINGERS - PAN + PINCH ZOOM
+        // ========================================
+        else if (activeTouchCount >= 2)
+        {
+            var touch0 = touches[0];
+            var touch1 = touches[1];
+
+            Vector2 p0 = touch0.position.ReadValue();
+            Vector2 p1 = touch1.position.ReadValue();
+            Vector2 currentCenter = (p0 + p1) * 0.5f;
+            float currentDist = Vector2.Distance(p0, p1);
+
+            // Initialize on first frame of two-finger gesture
+            if (lastTouchDist <= 0)
+            {
+                lastTouchDist = currentDist;
+                lastTwoFingerCenter = currentCenter;
+                return; // Skip first frame to avoid jumps
+            }
+
+            // ========================================
+            // PINCH ZOOM (based on distance change)
+            // ========================================
+            float distChange = currentDist - lastTouchDist;
+            
+            // Only zoom if distance change is significant
+            if (Mathf.Abs(distChange) > gestureThreshold)
+            {
+                Vector3 zoomDir = transform.forward;
+                Vector3 newPos = transform.position + zoomDir * distChange * touchZoomSensitivity;
+                
+                // Clamp height
                 if (newPos.y >= minHeight && newPos.y <= maxHeight)
                 {
                     transform.position = newPos;
-                    // Cập nhật birdPivot sau khi zoom để tránh camera nhảy lên cao khi xoay
-                    birdPivot = transform.position + transform.forward * Vector3.Distance(transform.position, birdPivot);
+                    
+                    // Update birdPivot to maintain rotation center
+                    float pivotDist = Vector3.Distance(transform.position, birdPivot);
+                    birdPivot = transform.position + transform.forward * pivotDist;
                 }
             }
-            lastTouchDist = dist;
 
-            Vector2 avgDelta = (touches[0].delta.ReadValue() + touches[1].delta.ReadValue()) * 0.5f;
-            transform.RotateAround(birdPivot, Vector3.up, avgDelta.x * rotateSpeed);
+            // ========================================
+            // PAN (based on center movement)
+            // ========================================
+            // Only pan if both touches are actively moving
+            if (touch0.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Moved ||
+                touch1.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Moved)
+            {
+                Vector2 centerDelta = currentCenter - lastTwoFingerCenter;
+                
+                // Only pan if movement is significant
+                if (centerDelta.magnitude > 0.5f)
+                {
+                    Vector3 right = transform.right;
+                    Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
 
-            currentPitch -= avgDelta.y * rotateSpeed;
-            currentPitch = Mathf.Clamp(currentPitch, minPitch, maxPitch);
+                    Vector3 move = (-right * centerDelta.x - forward * centerDelta.y) * touchPanMultiplier * Time.deltaTime;
+                    transform.position += move;
+                    birdPivot += move;
+                }
+            }
 
-            UpdateBirdCamera();
+            // Update state for next frame
+            lastTouchDist = currentDist;
+            lastTwoFingerCenter = currentCenter;
         }
 
-        if (touches.Count < 2)
-            lastTouchDist = 0;
+        // ========================================
+        // 3️⃣ RESET STATE when fingers lifted
+        // ========================================
+        else
+        {
+            // Reset two-finger gesture state
+            if (lastTouchDist > 0)
+            {
+                lastTouchDist = 0;
+                lastTwoFingerCenter = Vector2.zero;
+            }
+        }
     }
 
     void UpdateBirdCamera()

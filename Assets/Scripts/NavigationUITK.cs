@@ -29,7 +29,7 @@ public class NavigationUITK : MonoBehaviour
         }
 
         // UI -> controller
-        floorDropdown.RegisterValueChangedCallback(_ => nav.SetFloor(floorDropdown.index));
+        floorDropdown.RegisterValueChangedCallback(_ => nav.SetFloorFromDropdown(floorDropdown.index));
         fromDropdown.RegisterValueChangedCallback(_ => nav.SetFrom(fromDropdown.index));
         toDropdown.RegisterValueChangedCallback(_ => nav.SetTo(toDropdown.index));
         navigateBtn.clicked += nav.StartNavigation;
