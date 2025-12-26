@@ -17,7 +17,7 @@
             <ui:Button text="B&#7855;t &#273;&#7847;u &#273;i" name="navigateBtn" class="cta"/>
             <ui:VisualElement class="divider"/>
             <ui:VisualElement class="field">
-                <ui:Label text="Ch&#7885;n t&#7847;ng" class="label"/>
+                <ui:Label text="Chọn tầng" class="label"/>
                 <ui:DropdownField name="floorDropdown" class="dropdown"/>
             </ui:VisualElement>
         </ui:VisualElement>

@@ -1,7 +1,7 @@
 .root {
     position: absolute;
     right: 24px;
-    top: 24px;
+    top: 150px;
     width: 380px;
 }
 

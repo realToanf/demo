@@ -1,9 +1,8 @@
-using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.EnhancedTouch;
-using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
+using System;
 
 public class CameraController : MonoBehaviour
 {
@@ -15,50 +14,24 @@ public class CameraController : MonoBehaviour
     public float fpsLookSpeed = 6f;
 
     [Header("BirdEye Settings")]
+    public float panSpeed = 5f;
     public float rotateSpeed = 15f;
+    public float zoomSpeed = 1f;
     public float minHeight = 2f;
     public float maxHeight = 90f;
     public float minPitch = 20f;
     public float maxPitch = 80f;
 
-    [Header("BirdEye Feel")]
-    public float panSensitivity = 0.001f;      // tune: 0.01 - 0.05
-    public float zoomSensitivity = 30f;      // tune: 1 - 10
-    public float zoomMinDist = 5f;
-    public float zoomMaxDist = 250f;
-
-    [Header("Zoom Stability")]
-    public bool invertScrollZoom = false;     // nếu bạn thấy scroll ngược thì tick cái này
-    public float maxScrollPerFrame = 240f;    // cap scroll spikes (trackpad/WebGL hay bắn mạnh)
-    public float zoomDamping = 18f;           // 0 = instant, 12-25 = mượt
-    public float pinchToDist = 0.0025f;       // pinch pixels -> distance scale
-
-    [Header("BirdEye Pivot")]
-    public LayerMask pivotRaycastMask = ~0;   // nếu scene có collider ground -> pivot chuẩn
-    public float pivotRaycastMaxDistance = 500f;
-    public float groundPlaneY = 0f;           // nếu không có collider, dùng plane y=0 (đổi nếu ground bạn không ở y=0)
-    public float fallbackPivotDistance = 50f;
-
-    [Header("Move Routine")]
     public float height = 50f;
     public float moveSpeed = 16f;
 
     bool lockCamera = false;
 
-    // FPS
     float yaw;
     float pitch;
-
-    // BirdEye orbit
-    float birdYaw;
     float currentPitch = 45f;
     Vector3 birdPivot;
 
-    // BirdEye distance (IMPORTANT: zoom chỉ chỉnh cái này)
-    float birdDist;
-    float targetBirdDist;
-
-    // Touch zoom
     float lastTouchDist;
 
     Coroutine moveRoutine;
@@ -66,59 +39,32 @@ public class CameraController : MonoBehaviour
 
     void Awake()
     {
-#if UNITY_WEBGL
-        Application.targetFrameRate = -1;
-#else
         Application.targetFrameRate = 120;
-#endif
-        EnhancedTouchSupport.Enable();
         path = new UnityEngine.AI.NavMeshPath();
-    }
-
-    void OnDestroy()
-    {
-        EnhancedTouchSupport.Disable();
     }
 
     void Start()
     {
         yaw = transform.eulerAngles.y;
         pitch = transform.eulerAngles.x;
-
-        if (mode == CameraMode.BirdEye)
-        {
-            birdPivot = GetDefaultBirdPivot();
-            SyncBirdAnglesFromCurrentView();
-
-            birdDist = Vector3.Distance(transform.position, birdPivot);
-            targetBirdDist = birdDist;
-
-            ClampTargetBirdDist();
-            birdDist = targetBirdDist;
-
-            UpdateBirdCamera(true);
-        }
+        birdPivot = transform.position + transform.forward * 5f;
     }
 
     void Update()
     {
-        if (lockCamera) return;
+        if(lockCamera) return;
 
-        // Toggle mode (TAB on desktop)
         if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
         {
+            Debug.Log("Toggle mode");
             ToggleMode();
         }
 
-        // UNIFIED INPUT: ưu tiên touch nếu có, không thì mouse
-        if (mode == CameraMode.BirdEye && Touch.activeTouches.Count > 0)
-            BirdEyeTouchControl();
-        else
-            MouseKeyboardControl();
-
-        // nếu đang zoom smoothing thì tick update thêm cho mượt
-        if (mode == CameraMode.BirdEye && Mathf.Abs(birdDist - targetBirdDist) > 0.0005f)
-            UpdateBirdCamera(false);
+#if UNITY_ANDROID || UNITY_IOS
+        TouchControl();
+#else
+        MouseKeyboardControl();
+#endif
     }
 
     // ================= MODE =================
@@ -128,272 +74,141 @@ public class CameraController : MonoBehaviour
 
         if (mode == CameraMode.BirdEye)
         {
-            birdPivot = GetDefaultBirdPivot();
-            SyncBirdAnglesFromCurrentView();
-
-            birdDist = Vector3.Distance(transform.position, birdPivot);
-            targetBirdDist = birdDist;
-
-            ClampTargetBirdDist();
-            birdDist = targetBirdDist;
-
-            UpdateBirdCamera(true);
-        }
-        else
-        {
-            yaw = transform.eulerAngles.y;
-            pitch = transform.eulerAngles.x;
+            birdPivot = transform.position + transform.forward * 5f;
+            transform.LookAt(birdPivot);
         }
     }
 
-    // ================= Pivot helper =================
-    Vector3 GetDefaultBirdPivot()
-    {
-        // 1) nếu scene có ground collider -> raycast theo hướng nhìn
-        if (Physics.Raycast(
-                transform.position,
-                transform.forward,
-                out RaycastHit hit,
-                pivotRaycastMaxDistance,
-                pivotRaycastMask,
-                QueryTriggerInteraction.Ignore))
-        {
-            return hit.point;
-        }
-
-        // 2) fallback: intersect với mặt phẳng y = groundPlaneY
-        Plane plane = new Plane(Vector3.up, new Vector3(0f, groundPlaneY, 0f));
-        Ray ray = new Ray(transform.position, transform.forward);
-
-        if (plane.Raycast(ray, out float enter))
-            return ray.GetPoint(enter);
-
-        // 3) fallback cuối: đi theo forward phẳng (XZ)
-        Vector3 flatFwd = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
-        if (flatFwd.sqrMagnitude < 0.0001f) flatFwd = Vector3.forward;
-        flatFwd.Normalize();
-
-        Vector3 p = transform.position + flatFwd * fallbackPivotDistance;
-        p.y = groundPlaneY;
-        return p;
-    }
-
-    /// <summary>
-    /// Sync birdYaw/currentPitch từ camera hiện tại để không bị snap khi bắt đầu rotate
-    /// </summary>
-    void SyncBirdAnglesFromCurrentView()
-    {
-        Vector3 dir = (birdPivot - transform.position);
-        if (dir.sqrMagnitude < 0.0001f) dir = transform.forward;
-
-        dir.Normalize();
-
-        birdYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
-
-        float pitchFromDir = Mathf.Asin(dir.y) * Mathf.Rad2Deg;
-        currentPitch = Mathf.Clamp(-pitchFromDir, minPitch, maxPitch);
-    }
-
-    // ================= DIST CLAMP (the real fix) =================
-    void ClampTargetBirdDist()
-    {
-        float sinPitch = Mathf.Sin(currentPitch * Mathf.Deg2Rad);
-        if (sinPitch < 0.01f) sinPitch = 0.01f;
-
-        // y = pivot.y + dist * sin(pitch)
-        float minByHeight = (minHeight - birdPivot.y) / sinPitch;
-        float maxByHeight = (maxHeight - birdPivot.y) / sinPitch;
-
-        float minDist = Mathf.Max(zoomMinDist, minByHeight);
-        float maxDist = Mathf.Min(zoomMaxDist, maxByHeight);
-
-        // nếu pivot cao quá / data weird -> fallback
-        if (maxDist < minDist)
-        {
-            minDist = zoomMinDist;
-            maxDist = zoomMaxDist;
-        }
-
-        targetBirdDist = Mathf.Clamp(targetBirdDist, minDist, maxDist);
-    }
-
-    // ================= DESKTOP / MOUSE =================
+    // ================= PC =================
     void MouseKeyboardControl()
     {
-        var mouse = Mouse.current;
         var kb = Keyboard.current;
-        if (mouse == null) return;
-
-        Vector2 mouseDelta = mouse.delta.ReadValue(); // pixel/frame
-        float dt = Time.deltaTime;
+        var mouse = Mouse.current;
+        if (kb == null || mouse == null) return;
 
         if (mode == CameraMode.FPS)
         {
-            if (kb == null) return;
-
             Vector3 dir = Vector3.zero;
             if (kb.wKey.isPressed) dir += transform.forward;
             if (kb.sKey.isPressed) dir -= transform.forward;
             if (kb.aKey.isPressed) dir -= transform.right;
             if (kb.dKey.isPressed) dir += transform.right;
 
-            transform.position += dir * fpsMoveSpeed * dt;
+            transform.position += dir * fpsMoveSpeed * Time.deltaTime;
 
             if (mouse.rightButton.isPressed)
             {
-                Vector2 look = mouseDelta * fpsLookSpeed * dt;
-                yaw += look.x;
-                pitch -= look.y;
+                Vector2 delta = mouse.delta.ReadValue() * fpsLookSpeed * Time.deltaTime;
+                yaw += delta.x;
+                pitch -= delta.y;
                 pitch = Mathf.Clamp(pitch, -80f, 80f);
-                transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+                transform.rotation = Quaternion.Euler(pitch, yaw, 0);
             }
         }
         else
         {
-            // ========== BirdEye (Mouse) ==========
+            Vector2 delta = mouse.delta.ReadValue() * Time.deltaTime;
 
-            // PAN (LMB drag)
+            // PAN
             if (mouse.leftButton.isPressed)
             {
                 Vector3 right = transform.right;
                 Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
 
-                // scale theo height => cao pan nhanh hơn
-                float heightScale = Mathf.Clamp(birdDist, 10f, 250f) * panSensitivity;
-
-                Vector3 move = (-right * mouseDelta.x - forward * mouseDelta.y) * heightScale;
-
+                Vector3 move = (-right * delta.x - forward * delta.y) * panSpeed;
                 transform.position += move;
                 birdPivot += move;
             }
 
-            // ROTATE (RMB drag) ✅ no snap
+            // ROTATE
             if (mouse.rightButton.isPressed)
             {
-                birdYaw += mouseDelta.x * rotateSpeed * dt;
+                transform.RotateAround(birdPivot, Vector3.up, delta.x * rotateSpeed);
 
-                currentPitch -= mouseDelta.y * rotateSpeed * dt;
+                currentPitch -= delta.y * rotateSpeed;
                 currentPitch = Mathf.Clamp(currentPitch, minPitch, maxPitch);
 
-                // pitch đổi => dist bị ảnh hưởng height constraint
-                ClampTargetBirdDist();
-
-                UpdateBirdCamera(false);
+                UpdateBirdCamera();
             }
 
-            // ZOOM (scroll) ✅ stable
+            // ZOOM
             float scroll = mouse.scroll.ReadValue().y;
-            if (invertScrollZoom) scroll = -scroll;
-
             if (Mathf.Abs(scroll) > 0.01f)
             {
-                scroll = Mathf.Clamp(scroll, -maxScrollPerFrame, maxScrollPerFrame);
+                Debug.Log(scroll);
+                Vector3 dir = transform.forward;
+                Vector3 newPos = transform.position + dir * scroll * zoomSpeed;
 
-                // normalize: 120 -> 1
-                float scrollSteps = scroll / 120f;
-
-                // mỗi step thay đổi theo phần trăm distance
-                // zoomSensitivity = 30 => ~30% / step
-                float percent = zoomSensitivity * 0.01f;
-
-                // exp zoom
-                float factor = Mathf.Pow(1f - percent, scrollSteps);
-
-                targetBirdDist *= factor;
-
-                ClampTargetBirdDist();
-                UpdateBirdCamera(false);
+                float height = newPos.y;
+                if (height >= minHeight && height <= maxHeight)
+                {
+                    transform.position = newPos;
+                }
             }
         }
     }
 
-    // ================= TOUCH (BirdEye only) =================
-    void BirdEyeTouchControl()
+    // ================= TOUCH =================
+    void TouchControl()
     {
         if (mode != CameraMode.BirdEye) return;
 
-        var touches = Touch.activeTouches;
-        if (touches.Count == 0) return;
+        var ts = Touchscreen.current;
+        if (ts == null) return;
 
-        float dt = Time.deltaTime;
+        var touches = ts.touches;
 
         // 1 finger PAN
-        if (touches.Count == 1)
+        if (touches.Count == 1 && touches[0].isInProgress)
         {
-            Vector2 delta = touches[0].delta;
-
+            Vector2 delta = touches[0].delta.ReadValue();
             Vector3 right = transform.right;
             Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
 
-            float heightScale = Mathf.Clamp(transform.position.y, 5f, 200f) * panSensitivity;
-            float touchBoost = 1.6f;
-
-            Vector3 move = (-right * delta.x - forward * delta.y) * heightScale * touchBoost;
-
+            Vector3 move = (-right * delta.x - forward * delta.y) * panSpeed * 50f;
             transform.position += move;
             birdPivot += move;
-
-            lastTouchDist = 0;
-            return;
         }
 
         // 2 fingers ROTATE + ZOOM
-        if (touches.Count >= 2)
+        if (touches.Count >= 2 &&
+            touches[0].isInProgress &&
+            touches[1].isInProgress)
         {
-            var t0 = touches[0];
-            var t1 = touches[1];
-
-            Vector2 p0 = t0.screenPosition;
-            Vector2 p1 = t1.screenPosition;
+            Vector2 p0 = touches[0].position.ReadValue();
+            Vector2 p1 = touches[1].position.ReadValue();
             float dist = Vector2.Distance(p0, p1);
 
-            // ZOOM pinch (stable: chỉ chỉnh targetBirdDist)
             if (lastTouchDist > 0)
             {
-                float pinchDelta = dist - lastTouchDist;
-
-                float zoomFactor = Mathf.Max(0.25f, targetBirdDist * 0.02f);
-                targetBirdDist -= pinchDelta * zoomSensitivity * zoomFactor * pinchToDist;
-
-                ClampTargetBirdDist();
+                float zoomDelta = dist - lastTouchDist;
+                Vector3 newPos = transform.position + transform.forward * zoomDelta * zoomSpeed;
+                if (newPos.y >= minHeight && newPos.y <= maxHeight)
+                    transform.position = newPos;
             }
             lastTouchDist = dist;
 
-            // ROTATE + PITCH
-            Vector2 avgDelta = (t0.delta + t1.delta) * 0.5f;
+            Vector2 avgDelta = (touches[0].delta.ReadValue() + touches[1].delta.ReadValue()) * 0.5f;
+            transform.RotateAround(birdPivot, Vector3.up, avgDelta.x * rotateSpeed);
 
-            float rotScale = 0.12f;
-            birdYaw += avgDelta.x * rotateSpeed * rotScale * dt;
-
-            currentPitch -= avgDelta.y * rotateSpeed * rotScale * dt;
+            currentPitch -= avgDelta.y * rotateSpeed;
             currentPitch = Mathf.Clamp(currentPitch, minPitch, maxPitch);
 
-            ClampTargetBirdDist();
-            UpdateBirdCamera(false);
+            UpdateBirdCamera();
         }
+
+        if (touches.Count < 2)
+            lastTouchDist = 0;
     }
 
-    // ================= BirdEye Orbit Update =================
-    void UpdateBirdCamera(bool instant)
+    void UpdateBirdCamera()
     {
-        ClampTargetBirdDist();
-
-        if (instant || zoomDamping <= 0f)
-        {
-            birdDist = targetBirdDist;
-        }
-        else
-        {
-            float t = 1f - Mathf.Exp(-zoomDamping * Time.deltaTime);
-            birdDist = Mathf.Lerp(birdDist, targetBirdDist, t);
-        }
-
-        Quaternion rot = Quaternion.Euler(currentPitch, birdYaw, 0f);
-        transform.position = birdPivot + rot * Vector3.back * birdDist;
+        float dist = Vector3.Distance(transform.position, birdPivot);
+        Quaternion rot = Quaternion.Euler(currentPitch, transform.eulerAngles.y, 0);
+        transform.position = birdPivot + rot * Vector3.back * dist;
         transform.LookAt(birdPivot);
     }
 
-    // ================= MOVE ROUTINE (mostly unchanged) =================
     public void MoveBirdEyeFromTo(
         Transform from,
         Transform to,
@@ -407,7 +222,7 @@ public class CameraController : MonoBehaviour
             StopCoroutine(moveRoutine);
 
         Vector3 start = ProjectToNavMesh(from.position);
-        Vector3 end = ProjectToNavMesh(to.position);
+        Vector3 end   = ProjectToNavMesh(to.position);
 
         if (!UnityEngine.AI.NavMesh.CalculatePath(start, end, UnityEngine.AI.NavMesh.AllAreas, path))
         {
@@ -420,6 +235,7 @@ public class CameraController : MonoBehaviour
         );
     }
 
+    // =================================================
     IEnumerator MoveRoutine(
         Vector3[] corners,
         Action onComplete,
@@ -428,13 +244,19 @@ public class CameraController : MonoBehaviour
     {
         lockCamera = true;
 
+        // lưu trạng thái ban đầu
+        Vector3 originPos = transform.position;
+        Quaternion originRot = transform.rotation;
+
         if (corners.Length < 2)
         {
             lockCamera = false;
             yield break;
         }
 
-        // 1) Lift up
+        // ======================
+        // 1️⃣ BAY LÊN CAO
+        // ======================
         Vector3 liftTarget = corners[0] + Vector3.up * height;
         Quaternion topDownRot = Quaternion.Euler(90f, 0f, 0f);
 
@@ -453,7 +275,9 @@ public class CameraController : MonoBehaviour
             yield return null;
         }
 
-        // 2) Move along path
+        // ======================
+        // 2️⃣ DI CHUYỂN THEO PATH
+        // ======================
         for (int i = 1; i < corners.Length; i++)
         {
             Vector3 target = corners[i] + Vector3.up * height;
@@ -467,18 +291,38 @@ public class CameraController : MonoBehaviour
                     moveSpeed * Time.deltaTime
                 );
 
+                // xoay nhẹ theo hướng di chuyển (Y)
+                // Vector3 dir = corners[i] - transform.position;
+                // dir.y = 0;
+                // if (dir.sqrMagnitude > 0.01f)
+                // {
+                //     Quaternion look = Quaternion.LookRotation(dir);
+                //     Quaternion birdRot = Quaternion.Euler(90f, look.eulerAngles.y, 0);
+                //     transform.rotation = Quaternion.Slerp(
+                //         transform.rotation,
+                //         birdRot,
+                //         rotateSpeed * Time.deltaTime
+                //     );
+                // }
+
                 onStep?.Invoke(transform.position - Vector3.up * height);
                 yield return null;
             }
         }
 
-        // 3) Overview (diagonal)
+        // ======================
+        // 3️⃣ VIEW TỔNG QUAN (CHÉO)
+        // ======================
         Vector3 startPoint = corners[0];
-        Vector3 endPoint = corners[corners.Length - 1];
+        Vector3 endPoint   = corners[corners.Length - 1];
 
+        // điểm giữa
         Vector3 center = (startPoint + endPoint) * 0.5f;
+
+        // hướng từ start → end (ĐỔI TÊN)
         Vector3 pathDir = (endPoint - startPoint).normalized;
 
+        // offset chéo
         Vector3 overviewOffset =
             -pathDir * 10f +
             Vector3.up * height;
@@ -506,14 +350,6 @@ public class CameraController : MonoBehaviour
 
             yield return null;
         }
-
-        // ✅ IMPORTANT: sync lại pivot/yaw/pitch/dist sau routine để zoom/rotate không bị “lạ”
-        birdPivot = center;
-        SyncBirdAnglesFromCurrentView();
-        birdDist = Vector3.Distance(transform.position, birdPivot);
-        targetBirdDist = birdDist;
-        ClampTargetBirdDist();
-        UpdateBirdCamera(true);
 
         onComplete?.Invoke();
         lockCamera = false;
