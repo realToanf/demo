@@ -143,6 +143,8 @@ public class CameraController : MonoBehaviour
                 if (height >= minHeight && height <= maxHeight)
                 {
                     transform.position = newPos;
+                    // Cập nhật birdPivot sau khi zoom để tránh camera nhảy lên cao khi xoay
+                    birdPivot = transform.position + transform.forward * Vector3.Distance(transform.position, birdPivot);
                 }
             }
         }
@@ -184,7 +186,11 @@ public class CameraController : MonoBehaviour
                 float zoomDelta = dist - lastTouchDist;
                 Vector3 newPos = transform.position + transform.forward * zoomDelta * zoomSpeed;
                 if (newPos.y >= minHeight && newPos.y <= maxHeight)
+                {
                     transform.position = newPos;
+                    // Cập nhật birdPivot sau khi zoom để tránh camera nhảy lên cao khi xoay
+                    birdPivot = transform.position + transform.forward * Vector3.Distance(transform.position, birdPivot);
+                }
             }
             lastTouchDist = dist;
 
