@@ -11,7 +11,11 @@ public class NavigationUITK : MonoBehaviour
     DropdownField toDropdown;
     DropdownField floorDropdown;
     Button navigateBtn;
+
     bool isNavigating = false;
+
+    const string FROM_PLACEHOLDER = "Chọn điểm bắt đầu";
+    const string TO_PLACEHOLDER   = "Chọn điểm đến";
 
     void OnEnable()
     {
@@ -22,7 +26,6 @@ public class NavigationUITK : MonoBehaviour
         floorDropdown = root.Q<DropdownField>("floorDropdown");
         navigateBtn   = root.Q<Button>("navigateBtn");
 
-        // Defensive check (prevents null crashes)
         if (fromDropdown == null || toDropdown == null || floorDropdown == null || navigateBtn == null)
         {
             Debug.LogError("NavigationUITK: Missing UXML elements. Check your name= fields.");
@@ -31,9 +34,21 @@ public class NavigationUITK : MonoBehaviour
 
         // UI -> controller
         floorDropdown.RegisterValueChangedCallback(_ => nav.SetFloorFromDropdown(floorDropdown.index));
-        fromDropdown.RegisterValueChangedCallback(_ => {nav.SetFrom(fromDropdown.index); RefreshNavigateButtonState();});
-        toDropdown.RegisterValueChangedCallback(_ => {nav.SetTo(toDropdown.index); RefreshNavigateButtonState();});
-        navigateBtn.clicked += nav.StartNavigation;
+
+        fromDropdown.RegisterValueChangedCallback(_ =>
+        {
+            nav.SetFrom(fromDropdown.index);
+            RefreshNavigateButtonState();
+        });
+
+        toDropdown.RegisterValueChangedCallback(_ =>
+        {
+            nav.SetTo(toDropdown.index);
+            RefreshNavigateButtonState();
+        });
+
+        // ✅ Toggle click behavior
+        navigateBtn.clicked += OnNavigateButtonClicked;
 
         // controller -> UI
         nav.FloorsChanged += RefreshFloors;
@@ -44,6 +59,8 @@ public class NavigationUITK : MonoBehaviour
         RefreshFloors();
         RefreshActiveFloor();
         RefreshSelections();
+
+        // initial state
         OnNavigationStateChanged(false);
         RefreshNavigateButtonState();
     }
@@ -58,15 +75,32 @@ public class NavigationUITK : MonoBehaviour
         nav.NavigationStateChanged -= OnNavigationStateChanged;
 
         if (navigateBtn != null)
-            navigateBtn.clicked -= nav.StartNavigation;
+            navigateBtn.clicked -= OnNavigateButtonClicked;
+    }
+
+    void OnNavigateButtonClicked()
+    {
+        if (nav == null) return;
+
+        // ✅ If route is active (even after camera finished), clicking cancels + resets placeholders
+        if (nav.IsRouteActive || isNavigating)
+        {
+            nav.CancelAndResetToPlaceholder();
+            // UI will refresh via SelectionChanged + NavigationStateChanged
+            return;
+        }
+
+        // ✅ Otherwise: start navigation
+        nav.StartNavigation();
     }
 
     void OnNavigationStateChanged(bool navigating)
     {
         isNavigating = navigating;
-        if (navigateBtn == null) return;
+        if (navigateBtn == null || nav == null) return;
 
-        if (navigating)
+        // ✅ If route active OR currently moving => keep cancel UI
+        if (nav.IsRouteActive || navigating)
         {
             navigateBtn.text = "Hủy chỉ đường";
             navigateBtn.AddToClassList("cancel");
@@ -79,18 +113,22 @@ public class NavigationUITK : MonoBehaviour
             RefreshNavigateButtonState();
         }
     }
-    
+
     void RefreshNavigateButtonState()
     {
         if (navigateBtn == null || nav == null) return;
 
-        if (isNavigating)
+        // ✅ If route active => always allow cancel
+        if (nav.IsRouteActive || isNavigating)
         {
             navigateBtn.SetEnabled(true);
             return;
         }
 
-        bool valid = nav.SelectedFrom != nav.SelectedTo;
+        bool valid = nav.SelectedFrom >= 0 &&
+                     nav.SelectedTo >= 0 &&
+                     nav.SelectedFrom != nav.SelectedTo;
+
         navigateBtn.SetEnabled(valid);
     }
 
@@ -101,8 +139,7 @@ public class NavigationUITK : MonoBehaviour
 
         floorDropdown.choices = new List<string>(floors);
 
-        // If your controller starts on "All floors", index should be 0
-        int idx = Mathf.Clamp(floorDropdown.index, 0, floors.Count - 1);
+        int idx = Mathf.Clamp(nav.SelectedFloorDropdownIndex, 0, floors.Count - 1);
         floorDropdown.index = idx;
         floorDropdown.SetValueWithoutNotify(floors[idx]);
     }
@@ -110,12 +147,8 @@ public class NavigationUITK : MonoBehaviour
     void RefreshActiveFloor()
     {
         var points = nav.ActivePointNames;
-        if (points == null || points.Count == 0)
-        {
-            fromDropdown.choices = new List<string>();
-            toDropdown.choices = new List<string>();
-            return;
-        }
+        if (points == null)
+            points = new List<string>();
 
         fromDropdown.choices = new List<string>(points);
         toDropdown.choices   = new List<string>(points);
@@ -126,17 +159,40 @@ public class NavigationUITK : MonoBehaviour
     void RefreshSelections()
     {
         var points = nav.ActivePointNames;
-        if (points == null || points.Count == 0) return;
+        if (points == null || points.Count == 0)
+        {
+            fromDropdown.index = -1;
+            fromDropdown.SetValueWithoutNotify(FROM_PLACEHOLDER);
 
-        int from = Mathf.Clamp(nav.SelectedFrom, 0, points.Count - 1);
-        int to   = Mathf.Clamp(nav.SelectedTo,   0, points.Count - 1);
+            toDropdown.index = -1;
+            toDropdown.SetValueWithoutNotify(TO_PLACEHOLDER);
 
-        fromDropdown.index = from;
-        fromDropdown.SetValueWithoutNotify(points[from]);
+            RefreshNavigateButtonState();
+            return;
+        }
 
-        toDropdown.index = to;
-        toDropdown.SetValueWithoutNotify(points[to]);
+        // FROM
+        if (nav.SelectedFrom < 0 || nav.SelectedFrom >= points.Count)
+        {
+            fromDropdown.SetValueWithoutNotify(FROM_PLACEHOLDER);
+            fromDropdown.index = -1; // set AFTER value
+        }
+        else
+        {
+            fromDropdown.index = nav.SelectedFrom;
+            fromDropdown.SetValueWithoutNotify(points[nav.SelectedFrom]);
+        }
 
+        if (nav.SelectedTo < 0 || nav.SelectedTo >= points.Count)
+        {
+            toDropdown.SetValueWithoutNotify(TO_PLACEHOLDER);
+            toDropdown.index = -1; // set AFTER value
+        }
+        else
+        {
+            toDropdown.index = nav.SelectedTo;
+            toDropdown.SetValueWithoutNotify(points[nav.SelectedTo]);
+        }
         RefreshNavigateButtonState();
     }
 }

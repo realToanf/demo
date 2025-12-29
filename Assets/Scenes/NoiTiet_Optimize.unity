@@ -3751,6 +3751,10 @@ MonoBehaviour:
   lineHeightOffset: 0.05
   enableTextureScroll: 0
   textureScrollSpeed: 1
+  makeFloorsTransparentInNav: 1
+  navAlpha: 0.35
+  navTransparentMaterial: {fileID: 0}
+  visualsRoot: {fileID: 0}
 --- !u!4 &206206584
 Transform:
   m_ObjectHideFlags: 0
@@ -147800,6 +147804,8 @@ MonoBehaviour:
   maxPitch: 80
   height: 50
   moveSpeed: 16
+  followHeightOffset: 20
+  heightSmoothSpeed: 5
   touchPanMultiplier: 10
   touchZoomSensitivity: 0.036
   gestureThreshold: 5

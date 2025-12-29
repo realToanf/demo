@@ -7,11 +7,11 @@
                 <ui:Button text="&#9881;" name="settingsBtn" class="iconBtn"/>
             </ui:VisualElement>
             <ui:VisualElement class="field">
-                <ui:Label text="B&#7855;t &#273;&#7847;u t&#7915; ph&#242;ng &#128994;" class="label" style="font-size: 15px;"/>
+                <ui:Label text="B&#7855;t &#273;&#7847;u t&#7915; ph&#242;ng &#128994;&#128205;" class="label" style="font-size: 15px;"/>
                 <ui:DropdownField name="fromDropdown" class="dropdown"/>
             </ui:VisualElement>
             <ui:VisualElement class="field">
-                <ui:Label text="T&#7899;i ph&#242;ng &#128308;" class="label" style="font-size: 15px;"/>
+                <ui:Label text="T&#7899;i ph&#242;ng &#128308;&#128205;" class="label" style="font-size: 15px;"/>
                 <ui:DropdownField name="toDropdown" class="dropdown"/>
             </ui:VisualElement>
             <ui:Button text="B&#7855;t &#273;&#7847;u &#273;i" name="navigateBtn" class="cta"/>

@@ -352,7 +352,7 @@ public class CameraController : MonoBehaviour
         // ======================
         // 1️⃣ BAY LÊN CAO
         // ======================
-        Vector3 liftTarget = corners[0] + Vector3.up * (height * 0.6f);
+        Vector3 liftTarget = corners[0] + Vector3.up * (height * 0.3f);
         Quaternion topDownRot = Quaternion.Euler(90f, 0f, 0f);
 
         while (Vector3.Distance(transform.position, liftTarget) > 0.05f)
@@ -360,7 +360,7 @@ public class CameraController : MonoBehaviour
             transform.position = Vector3.MoveTowards(
                 transform.position,
                 liftTarget,
-                (moveSpeed * 0.6f) * Time.deltaTime
+                moveSpeed * Time.deltaTime
             );
             transform.rotation = Quaternion.Slerp(
                 transform.rotation,
