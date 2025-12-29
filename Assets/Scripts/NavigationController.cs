@@ -348,6 +348,8 @@ public class NavigationController : MonoBehaviour
         if (allPoints.Count == 0) return;
         if (SelectedFrom == SelectedTo) return;
 
+        ExitAllFloorsAndFocusFloor(allPointFloorIndex[SelectedFrom]);
+
         var camController = mainCamera.GetComponent<CameraController>();
         if (camController == null)
         {
@@ -451,6 +453,7 @@ public class NavigationController : MonoBehaviour
         }
         else
         {
+            ActiveFloorIndex = Mathf.Clamp(ActiveFloorIndex, 0, floors.Count - 1);
             visibleFloors.Add(ActiveFloorIndex);
         }
 
@@ -460,5 +463,32 @@ public class NavigationController : MonoBehaviour
         FloorsChanged?.Invoke();
         
         PreviewPath();
+    }
+
+    public void ExitAllFloorsAndFocusFloor(int floorIndex)
+    {
+        floorIndex = Mathf.Clamp(floorIndex, 0, floors.Count - 1);
+
+        if (!ShowAllFloors)
+        {
+            SetFloor(floorIndex);
+            return;
+        }
+
+        // Turn off all floors mode
+        ShowAllFloors = false;
+
+        ActiveFloorIndex = floorIndex;
+
+        visibleFloors.Clear();
+        visibleFloors.Add(ActiveFloorIndex);
+
+        ApplyVisibleFloors();
+
+        SelectedFloorDropdownIndex = floorIndex + 1;
+        ActiveFloorChanged?.Invoke();
+        FloorsChanged?.Invoke();
+        PreviewPath();
+
     }
 }
