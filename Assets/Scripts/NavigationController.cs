@@ -1,9 +1,9 @@
 using System;
 using System.Collections;
-using UnityEngine;
-using TMPro;
-using UnityEngine.AI;
 using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.AI;
+using TMPro;
 
 public class NavigationController : MonoBehaviour
 {
@@ -19,12 +19,31 @@ public class NavigationController : MonoBehaviour
     public float labelHeight = 1f;
     public float labelSize = 8f;
 
+    [Header("Camera")]
     public Transform mainCamera;
+
+    [Header("Navigation Visuals")]
+    public GameObject startPingPrefab;
+    public GameObject endPingPrefab;
+
+    [Header("Line Style")]
+    public float lineWidth = 0.25f;
+    public int lineCornerVertices = 8;
+    public int lineCapVertices = 8;
+    public Gradient lineGradient;
+    public AnimationCurve widthCurve = AnimationCurve.Linear(0, 1, 1, 1);
+
+    [Header("Gradual Draw")]
+    public float revealSpeed = 12f; // meters per second
+    public float lineHeightOffset = 0.05f; // reduce z-fighting
+
+    [Header("Optional: Texture Scroll")]
+    public bool enableTextureScroll = false;
+    public float textureScrollSpeed = 1f;
+    private float textureOffset = 0f;
 
     // ----- Public state (for UI Toolkit) -----
     public IReadOnlyList<string> FloorNames => floorDropdownOptions;
-
-    // ✅ IMPORTANT: UI sees ALL points across ALL floors
     public IReadOnlyList<string> ActivePointNames => allPointNames;
 
     public int ActiveFloorIndex { get; private set; } = 0;
@@ -36,7 +55,6 @@ public class NavigationController : MonoBehaviour
     public event Action SelectionChanged;
 
     // Floors
-
     private readonly List<Transform> floors = new();
     private readonly List<string> floorNames = new();
 
@@ -44,26 +62,24 @@ public class NavigationController : MonoBehaviour
     private readonly Dictionary<int, List<Transform>> floorPoints = new();
     private readonly Dictionary<int, List<GameObject>> floorLabels = new();
 
-    // ✅ All points across ALL floors (dropdown + navigation)
+    // All points across all floors
     private readonly List<Transform> allPoints = new();
     private readonly List<string> allPointNames = new();
-    private readonly List<int> allPointFloorIndex = new(); // point -> floor
+    private readonly List<int> allPointFloorIndex = new(); // point -> floor index
 
     private NavMeshPath path;
 
-    // Visible floors (we will always keep ONLY 1 in this set)
+    // Visible floors (single-floor mode => only 1 visible)
     public IReadOnlyCollection<int> VisibleFloors => visibleFloors;
     private readonly HashSet<int> visibleFloors = new();
 
-    public bool IsFloorVisible(int index) => visibleFloors.Contains(index);
     public bool ShowAllFloors { get; private set; } = false;
     public IReadOnlyList<string> FloorDropdownOptions => floorDropdownOptions;
     private readonly List<string> floorDropdownOptions = new();
     public int SelectedFloorDropdownIndex { get; private set; } = 1;
 
-
     // Floor ranges for auto switching during camera movement
-    struct FloorRange
+    private struct FloorRange
     {
         public Transform floor;
         public float minY;
@@ -71,6 +87,17 @@ public class NavigationController : MonoBehaviour
     }
 
     private readonly List<FloorRange> floorRanges = new();
+
+    // Navigation state
+    private GameObject startPingInstance;
+    private GameObject endPingInstance;
+
+    private Vector3[] navCorners;
+    private float revealDistance = 0f;
+    private float totalDistance = 0f;
+    private bool isNavigating = false;
+
+    public Transform visualsRoot;
 
     IEnumerator Start()
     {
@@ -98,14 +125,15 @@ public class NavigationController : MonoBehaviour
 
         path = new NavMeshPath();
 
-        if (lineMaterial != null) line.material = lineMaterial;
+        if (lineMaterial != null)
+            line.material = lineMaterial;
+
         if (line.material == null)
         {
             Debug.LogError("NavigationController: LineRenderer has no material. Assign a URP Unlit material.");
             yield break;
         }
 
-        line.material.color = Color.green;
         line.useWorldSpace = true;
         line.sortingOrder = 999;
         line.positionCount = 0;
@@ -114,6 +142,9 @@ public class NavigationController : MonoBehaviour
         LoadFloorsAndWaypoints();
         BuildFloorDropdownOptions();
         BuildFloorRanges();
+
+        // Apply style BEFORE drawing any path
+        SetupLineStyle();
 
         FloorsChanged?.Invoke();
 
@@ -127,12 +158,16 @@ public class NavigationController : MonoBehaviour
         PreviewPath();
     }
 
-    void BuildFloorDropdownOptions()
+    void Update()
     {
-        floorDropdownOptions.Clear();
-        floorDropdownOptions.Add("Tất cả các tầng");
-        floorDropdownOptions.AddRange(floorNames);
+        if (!enableTextureScroll) return;
+        if (!isNavigating) return;
+        if (line == null || line.material == null) return;
+
+        textureOffset += textureScrollSpeed * Time.deltaTime;
+        line.material.mainTextureOffset = new Vector2(textureOffset, 0f);
     }
+
     void AutoAssignIfNull()
     {
         if (floorsRoot == null)
@@ -143,6 +178,13 @@ public class NavigationController : MonoBehaviour
 
         if (mainCamera == null && Camera.main != null)
             mainCamera = Camera.main.transform;
+    }
+
+    void BuildFloorDropdownOptions()
+    {
+        floorDropdownOptions.Clear();
+        floorDropdownOptions.Add("Tất cả các tầng");
+        floorDropdownOptions.AddRange(floorNames);
     }
 
     // =========================================================
@@ -171,7 +213,7 @@ public class NavigationController : MonoBehaviour
             Transform waypoints = floor.Find("Waypoints");
             if (waypoints != null)
             {
-                // ✅ include inactive children too
+                // include inactive children too
                 var children = waypoints.GetComponentsInChildren<Transform>(true);
 
                 foreach (var t in children)
@@ -181,7 +223,6 @@ public class NavigationController : MonoBehaviour
                     points.Add(t);
                     labels.Add(CreateLabel(t));
 
-                    // ✅ global list for dropdown
                     allPoints.Add(t);
                     allPointNames.Add($"{floor.name} - {t.name}");
                     allPointFloorIndex.Add(i);
@@ -220,10 +261,9 @@ public class NavigationController : MonoBehaviour
         }
     }
 
-    // ✅ Single-floor mode API
     public void SetFloor(int index)
     {
-        if (ShowAllFloors) return; 
+        if (ShowAllFloors) return;
         if (floors.Count == 0) return;
 
         index = Mathf.Clamp(index, 0, floors.Count - 1);
@@ -252,15 +292,12 @@ public class NavigationController : MonoBehaviour
         else
         {
             SetShowAllFloors(false);
-            SetFloor(dropdownIndex - 1); // because floor list starts at index 0
+            SetFloor(dropdownIndex - 1);
         }
     }
 
-    // (Optional, kept for compatibility, but not used in single-floor mode)
     public void SetFloorVisible(int index, bool visible)
     {
-        // In your project you said you DON'T want multi visible floors,
-        // so we just redirect to SetFloor(index) when visible is true.
         if (visible) SetFloor(index);
     }
 
@@ -272,7 +309,7 @@ public class NavigationController : MonoBehaviour
         if (allPoints.Count == 0) return;
 
         SelectedFrom = Mathf.Clamp(SelectedFrom, 0, allPoints.Count - 1);
-        SelectedTo   = Mathf.Clamp(SelectedTo,   0, allPoints.Count - 1);
+        SelectedTo = Mathf.Clamp(SelectedTo, 0, allPoints.Count - 1);
 
         if (SelectedFrom == SelectedTo && allPoints.Count > 1)
             SelectedTo = (SelectedFrom == 0) ? 1 : 0;
@@ -282,12 +319,13 @@ public class NavigationController : MonoBehaviour
     {
         if (allPoints.Count == 0) return;
 
+        StopNavigationVisuals();
+
         SelectedFrom = Mathf.Clamp(index, 0, allPoints.Count - 1);
 
         if (SelectedFrom == SelectedTo && allPoints.Count > 1)
             SelectedTo = (SelectedFrom == 0) ? 1 : 0;
 
-        // ✅ show floor of selected point
         if (!ShowAllFloors)
             SetFloor(allPointFloorIndex[SelectedFrom]);
 
@@ -299,17 +337,27 @@ public class NavigationController : MonoBehaviour
     {
         if (allPoints.Count == 0) return;
 
+        StopNavigationVisuals();
+
         SelectedTo = Mathf.Clamp(index, 0, allPoints.Count - 1);
 
         if (SelectedTo == SelectedFrom && allPoints.Count > 1)
             SelectedFrom = (SelectedTo == 0) ? 1 : 0;
 
-        // ✅ show floor of selected point
         if (!ShowAllFloors)
             SetFloor(allPointFloorIndex[SelectedTo]);
 
         SelectionChanged?.Invoke();
         PreviewPath();
+    }
+
+    void StopNavigationVisuals()
+    {
+        isNavigating = false;
+        navCorners = null;
+        revealDistance = 0f;
+        totalDistance = 0f;
+        ClearPings();
     }
 
     // =========================================================
@@ -318,6 +366,7 @@ public class NavigationController : MonoBehaviour
     public void PreviewPath()
     {
         if (allPoints.Count == 0) return;
+        if (isNavigating) return; // prevent preview overriding the navigation draw
 
         int from = SelectedFrom;
         int to = SelectedTo;
@@ -326,6 +375,7 @@ public class NavigationController : MonoBehaviour
             from >= allPoints.Count || to >= allPoints.Count)
         {
             ClearPath();
+            ClearPings();
             return;
         }
 
@@ -334,14 +384,21 @@ public class NavigationController : MonoBehaviour
 
         if (NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
         {
+            // show preview line
             line.positionCount = path.corners.Length;
-            line.SetPositions(path.corners);
+            for (int i = 0; i < path.corners.Length; i++)
+                line.SetPosition(i, path.corners[i] + Vector3.up * lineHeightOffset);
+
+            // show preview pings (NEW)
+            PreviewPings();
         }
         else
         {
             ClearPath();
+            ClearPings();
         }
     }
+
 
     public void StartNavigation()
     {
@@ -349,6 +406,25 @@ public class NavigationController : MonoBehaviour
         if (SelectedFrom == SelectedTo) return;
 
         ExitAllFloorsAndFocusFloor(allPointFloorIndex[SelectedFrom]);
+
+        SpawnPings();
+
+        Vector3 start = allPoints[SelectedFrom].position;
+        Vector3 end = allPoints[SelectedTo].position;
+
+        if (!NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
+        {
+            Debug.LogError("NavigationController: NavMesh path failed");
+            ClearPath();
+            return;
+        }
+
+        navCorners = path.corners;
+        totalDistance = ComputeTotalDistance(navCorners);
+        revealDistance = 0f;
+        isNavigating = true;
+
+        DrawLinePoints(GetPartialPath(navCorners, revealDistance));
 
         var camController = mainCamera.GetComponent<CameraController>();
         if (camController == null)
@@ -360,12 +436,178 @@ public class NavigationController : MonoBehaviour
         camController.MoveBirdEyeFromTo(
             allPoints[SelectedFrom],
             allPoints[SelectedTo],
-            null,
-            pos => ActivateFloorByY(pos.y)
+            () =>
+            {
+                revealDistance = totalDistance;
+                DrawLinePoints(GetPartialPath(navCorners, revealDistance));
+                isNavigating = false;
+            },
+            pos =>
+            {
+                ActivateFloorByY(pos.y);
+
+                revealDistance += revealSpeed * Time.deltaTime;
+                revealDistance = Mathf.Clamp(revealDistance, 0f, totalDistance);
+
+                DrawLinePoints(GetPartialPath(navCorners, revealDistance));
+            }
         );
     }
 
-    void ClearPath() => line.positionCount = 0;
+    void ClearPath()
+    {
+        line.positionCount = 0;
+        ClearPings();
+    }
+
+    float ComputeTotalDistance(Vector3[] pts)
+    {
+        if (pts == null || pts.Length < 2) return 0f;
+
+        float d = 0f;
+        for (int i = 1; i < pts.Length; i++)
+            d += Vector3.Distance(pts[i - 1], pts[i]);
+
+        return d;
+    }
+
+    List<Vector3> GetPartialPath(Vector3[] pts, float distance)
+    {
+        var result = new List<Vector3>();
+        if (pts == null || pts.Length == 0) return result;
+
+        result.Add(pts[0]);
+        float traveled = 0f;
+
+        for (int i = 1; i < pts.Length; i++)
+        {
+            float seg = Vector3.Distance(pts[i - 1], pts[i]);
+
+            if (traveled + seg <= distance)
+            {
+                result.Add(pts[i]);
+                traveled += seg;
+            }
+            else
+            {
+                float remain = distance - traveled;
+                float t = (seg <= 0.0001f) ? 1f : Mathf.Clamp01(remain / seg);
+                Vector3 p = Vector3.Lerp(pts[i - 1], pts[i], t);
+                result.Add(p);
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    void DrawLinePoints(List<Vector3> pts)
+    {
+        if (pts == null || pts.Count == 0)
+        {
+            ClearPath();
+            return;
+        }
+
+        // LineRenderer needs >= 2 points to show anything
+        if (pts.Count == 1)
+        {
+            Vector3 p = pts[0] + Vector3.up * lineHeightOffset;
+            line.positionCount = 2;
+            line.SetPosition(0, p);
+            line.SetPosition(1, p + Vector3.up * 0.05f);
+            return;
+        }
+
+        line.positionCount = pts.Count;
+        for (int i = 0; i < pts.Count; i++)
+            line.SetPosition(i, pts[i] + Vector3.up * lineHeightOffset);
+    }
+
+    void SetupLineStyle()
+    {
+        line.startWidth = lineWidth;
+        line.endWidth = lineWidth;
+        line.widthCurve = widthCurve;
+
+        line.numCornerVertices = lineCornerVertices;
+        line.numCapVertices = lineCapVertices;
+
+        line.alignment = LineAlignment.View;
+        line.textureMode = LineTextureMode.Tile;
+
+        if (lineGradient != null)
+            line.colorGradient = lineGradient;
+    }
+
+    void SpawnPings()
+    {
+        ClearPings();
+
+        if (startPingPrefab != null)
+        {
+            startPingInstance = Instantiate(
+                startPingPrefab,
+                allPoints[SelectedFrom].position,
+                Quaternion.identity,
+                visualsRoot
+            );
+        }
+
+        if (endPingPrefab != null)
+        {
+            endPingInstance = Instantiate(
+                endPingPrefab,
+                allPoints[SelectedTo].position,
+                Quaternion.identity,
+                visualsRoot
+            );
+        }
+    }
+
+    void PreviewPings()
+    {
+        if (allPoints.Count == 0) return;
+
+        // if no prefabs, nothing to show
+        if (startPingPrefab == null && endPingPrefab == null) return;
+
+        // create if missing, otherwise just move them
+        if (startPingInstance == null && startPingPrefab != null)
+        {
+            startPingInstance = Instantiate(
+                startPingPrefab,
+                allPoints[SelectedFrom].position,
+                Quaternion.identity,
+                visualsRoot
+            );
+        }
+        else if (startPingInstance != null)
+        {
+            startPingInstance.transform.position = allPoints[SelectedFrom].position;
+        }
+
+        if (endPingInstance == null && endPingPrefab != null)
+        {
+            endPingInstance = Instantiate(
+                endPingPrefab,
+                allPoints[SelectedTo].position,
+                Quaternion.identity,
+                visualsRoot
+            );
+        }
+        else if (endPingInstance != null)
+        {
+            endPingInstance.transform.position = allPoints[SelectedTo].position;
+        }
+    }
+
+
+    void ClearPings()
+    {
+        if (startPingInstance != null) Destroy(startPingInstance);
+        if (endPingInstance != null) Destroy(endPingInstance);
+    }
 
     // =========================================================
     // LABELS
@@ -409,7 +651,7 @@ public class NavigationController : MonoBehaviour
             {
                 var children = waypoints.GetComponentsInChildren<Transform>(true);
                 if (children.Length > 1)
-                    y = children[1].position.y; // first waypoint child
+                    y = children[1].position.y;
             }
 
             floorRanges.Add(new FloorRange
@@ -424,8 +666,8 @@ public class NavigationController : MonoBehaviour
     void ActivateFloorByY(float y)
     {
         if (ShowAllFloors) return;
-        int bestIndex = -1;
 
+        int bestIndex = -1;
         for (int i = 0; i < floorRanges.Count; i++)
         {
             if (y >= floorRanges[i].minY && y <= floorRanges[i].maxY)
@@ -443,7 +685,7 @@ public class NavigationController : MonoBehaviour
 
     void SetShowAllFloors(bool enabled)
     {
-        ShowAllFloors = enabled; 
+        ShowAllFloors = enabled;
         visibleFloors.Clear();
 
         if (enabled)
@@ -459,9 +701,7 @@ public class NavigationController : MonoBehaviour
 
         ApplyVisibleFloors();
 
-        // ActiveFloorChanged?.Invoke();
         FloorsChanged?.Invoke();
-        
         PreviewPath();
     }
 
@@ -475,7 +715,6 @@ public class NavigationController : MonoBehaviour
             return;
         }
 
-        // Turn off all floors mode
         ShowAllFloors = false;
 
         ActiveFloorIndex = floorIndex;
@@ -489,6 +728,5 @@ public class NavigationController : MonoBehaviour
         ActiveFloorChanged?.Invoke();
         FloorsChanged?.Invoke();
         PreviewPath();
-
     }
 }
