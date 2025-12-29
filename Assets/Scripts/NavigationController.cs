@@ -42,6 +42,13 @@ public class NavigationController : MonoBehaviour
     public float textureScrollSpeed = 1f;
     private float textureOffset = 0f;
 
+    [Header("Navigation Transparency")]
+    public bool makeFloorsTransparentInNav = true;
+    [Range(0.05f, 1f)] public float navAlpha = 0.35f;
+    public Material navTransparentMaterial;
+
+    private readonly Dictionary<Renderer, Material[]> originalMats = new();
+
     // ----- Public state (for UI Toolkit) -----
     public IReadOnlyList<string> FloorNames => floorDropdownOptions;
     public IReadOnlyList<string> ActivePointNames => allPointNames;
@@ -99,6 +106,38 @@ public class NavigationController : MonoBehaviour
 
     public Transform visualsRoot;
 
+    // =========================================================
+    // DEBUG HELPERS
+    // =========================================================
+    void LogPingState(string tag)
+    {
+        string sr = startPingInstance ? startPingInstance.name : "null";
+        string er = endPingInstance ? endPingInstance.name : "null";
+
+        string sActive = startPingInstance ? startPingInstance.activeInHierarchy.ToString() : "n/a";
+        string eActive = endPingInstance ? endPingInstance.activeInHierarchy.ToString() : "n/a";
+
+        string root = visualsRoot ? visualsRoot.name : "null";
+        string rootActive = visualsRoot ? visualsRoot.gameObject.activeInHierarchy.ToString() : "n/a";
+
+        Debug.Log(
+            $"[{tag}] from={SelectedFrom} to={SelectedTo} " +
+            $"start={sr} (active={sActive}) end={er} (active={eActive}) " +
+            $"visualsRoot={root} (active={rootActive}) " +
+            $"ActiveFloorIndex={ActiveFloorIndex} ShowAllFloors={ShowAllFloors} " +
+            $"isNavigating={isNavigating}"
+        );
+    }
+
+    void LogFloorsState(string tag)
+    {
+        string vis = "";
+        foreach (var idx in visibleFloors)
+            vis += idx + ",";
+
+        Debug.Log($"[{tag}] ActiveFloorIndex={ActiveFloorIndex} ShowAllFloors={ShowAllFloors} VisibleFloors={vis}");
+    }
+
     IEnumerator Start()
     {
         yield return null;
@@ -138,20 +177,16 @@ public class NavigationController : MonoBehaviour
         line.sortingOrder = 999;
         line.positionCount = 0;
 
-        // Load floors + ALL waypoints (including inactive ones)
         LoadFloorsAndWaypoints();
         BuildFloorDropdownOptions();
         BuildFloorRanges();
 
-        // Apply style BEFORE drawing any path
         SetupLineStyle();
 
         FloorsChanged?.Invoke();
 
-        // Default: show floor 0
         SetFloor(0);
 
-        // Clamp selection defaults
         ClampSelections();
 
         ActiveFloorChanged?.Invoke();
@@ -213,7 +248,6 @@ public class NavigationController : MonoBehaviour
             Transform waypoints = floor.Find("Waypoints");
             if (waypoints != null)
             {
-                // include inactive children too
                 var children = waypoints.GetComponentsInChildren<Transform>(true);
 
                 foreach (var t in children)
@@ -239,20 +273,23 @@ public class NavigationController : MonoBehaviour
     // =========================================================
     void ApplyVisibleFloors()
     {
+        LogFloorsState("ApplyVisibleFloors BEFORE");
+
         for (int i = 0; i < floors.Count; i++)
             floors[i].gameObject.SetActive(visibleFloors.Contains(i));
 
         UpdateLabelsVisibility();
+
+        LogFloorsState("ApplyVisibleFloors AFTER");
+        LogPingState("ApplyVisibleFloors PingState");
     }
 
     void UpdateLabelsVisibility()
     {
-        // hide all
         foreach (var kv in floorLabels)
             foreach (var label in kv.Value)
                 if (label != null) label.SetActive(false);
 
-        // show only visible floors
         foreach (var idx in visibleFloors)
         {
             if (!floorLabels.ContainsKey(idx)) continue;
@@ -263,6 +300,8 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloor(int index)
     {
+        Debug.Log($"[SetFloor] Request index={index}");
+
         if (ShowAllFloors) return;
         if (floors.Count == 0) return;
 
@@ -353,6 +392,7 @@ public class NavigationController : MonoBehaviour
 
     void StopNavigationVisuals()
     {
+        Debug.Log("[StopNavigationVisuals] called");
         isNavigating = false;
         navCorners = null;
         revealDistance = 0f;
@@ -365,8 +405,10 @@ public class NavigationController : MonoBehaviour
     // =========================================================
     public void PreviewPath()
     {
+        Debug.Log($"[PreviewPath] called. isNavigating={isNavigating}");
+
         if (allPoints.Count == 0) return;
-        if (isNavigating) return; // prevent preview overriding the navigation draw
+        if (isNavigating) return;
 
         int from = SelectedFrom;
         int to = SelectedTo;
@@ -374,6 +416,7 @@ public class NavigationController : MonoBehaviour
         if (from == to || from < 0 || to < 0 ||
             from >= allPoints.Count || to >= allPoints.Count)
         {
+            Debug.Log("[PreviewPath] invalid selection => ClearPath + ClearPings");
             ClearPath();
             ClearPings();
             return;
@@ -384,24 +427,27 @@ public class NavigationController : MonoBehaviour
 
         if (NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
         {
-            // show preview line
+            Debug.Log($"[PreviewPath] NavMesh OK. corners={path.corners.Length}. Calling PreviewPings()");
+
             line.positionCount = path.corners.Length;
             for (int i = 0; i < path.corners.Length; i++)
                 line.SetPosition(i, path.corners[i] + Vector3.up * lineHeightOffset);
 
-            // show preview pings (NEW)
             PreviewPings();
         }
         else
         {
+            Debug.Log("[PreviewPath] NavMesh FAILED => ClearPath + ClearPings");
             ClearPath();
             ClearPings();
         }
     }
 
-
     public void StartNavigation()
     {
+        Debug.Log("[StartNavigation] called");
+        LogPingState("StartNavigation BEFORE");
+
         if (allPoints.Count == 0) return;
         if (SelectedFrom == SelectedTo) return;
 
@@ -441,6 +487,7 @@ public class NavigationController : MonoBehaviour
                 revealDistance = totalDistance;
                 DrawLinePoints(GetPartialPath(navCorners, revealDistance));
                 isNavigating = false;
+                LogPingState("StartNavigation COMPLETE");
             },
             pos =>
             {
@@ -456,6 +503,7 @@ public class NavigationController : MonoBehaviour
 
     void ClearPath()
     {
+        Debug.Log("[ClearPath] called => line.positionCount=0");
         line.positionCount = 0;
         ClearPings();
     }
@@ -509,7 +557,6 @@ public class NavigationController : MonoBehaviour
             return;
         }
 
-        // LineRenderer needs >= 2 points to show anything
         if (pts.Count == 1)
         {
             Vector3 p = pts[0] + Vector3.up * lineHeightOffset;
@@ -542,10 +589,14 @@ public class NavigationController : MonoBehaviour
 
     void SpawnPings()
     {
+        Debug.Log("[SpawnPings] ENTER");
+        LogPingState("SpawnPings BEFORE");
+
         ClearPings();
 
         if (startPingPrefab != null)
         {
+            Debug.Log("[SpawnPings] Instantiate startPing");
             startPingInstance = Instantiate(
                 startPingPrefab,
                 allPoints[SelectedFrom].position,
@@ -553,9 +604,14 @@ public class NavigationController : MonoBehaviour
                 visualsRoot
             );
         }
+        else
+        {
+            Debug.LogWarning("[SpawnPings] startPingPrefab is NULL");
+        }
 
         if (endPingPrefab != null)
         {
+            Debug.Log("[SpawnPings] Instantiate endPing");
             endPingInstance = Instantiate(
                 endPingPrefab,
                 allPoints[SelectedTo].position,
@@ -563,18 +619,39 @@ public class NavigationController : MonoBehaviour
                 visualsRoot
             );
         }
+        else
+        {
+            Debug.LogWarning("[SpawnPings] endPingPrefab is NULL");
+        }
+
+        LogPingState("SpawnPings AFTER");
     }
 
     void PreviewPings()
     {
-        if (allPoints.Count == 0) return;
+        Debug.Log("[PreviewPings] ENTER");
+        LogPingState("PreviewPings BEFORE");
 
-        // if no prefabs, nothing to show
-        if (startPingPrefab == null && endPingPrefab == null) return;
+        if (allPoints.Count == 0)
+        {
+            Debug.Log("[PreviewPings] RETURN: allPoints.Count == 0");
+            return;
+        }
 
-        // create if missing, otherwise just move them
+        if (startPingPrefab == null && endPingPrefab == null)
+        {
+            Debug.Log("[PreviewPings] RETURN: both prefabs NULL");
+            return;
+        }
+
+        if (visualsRoot == null)
+        {
+            Debug.LogError("[PreviewPings] visualsRoot is NULL");
+        }
+
         if (startPingInstance == null && startPingPrefab != null)
         {
+            Debug.Log("[PreviewPings] Instantiate startPing");
             startPingInstance = Instantiate(
                 startPingPrefab,
                 allPoints[SelectedFrom].position,
@@ -584,11 +661,13 @@ public class NavigationController : MonoBehaviour
         }
         else if (startPingInstance != null)
         {
+            Debug.Log("[PreviewPings] Move startPing");
             startPingInstance.transform.position = allPoints[SelectedFrom].position;
         }
 
         if (endPingInstance == null && endPingPrefab != null)
         {
+            Debug.Log("[PreviewPings] Instantiate endPing");
             endPingInstance = Instantiate(
                 endPingPrefab,
                 allPoints[SelectedTo].position,
@@ -598,15 +677,28 @@ public class NavigationController : MonoBehaviour
         }
         else if (endPingInstance != null)
         {
+            Debug.Log("[PreviewPings] Move endPing");
             endPingInstance.transform.position = allPoints[SelectedTo].position;
         }
-    }
 
+        LogPingState("PreviewPings AFTER");
+    }
 
     void ClearPings()
     {
+        if (startPingInstance != null)
+            Debug.Log($"[ClearPings] Destroy startPing {startPingInstance.name} (activeInHierarchy={startPingInstance.activeInHierarchy})");
+
+        if (endPingInstance != null)
+            Debug.Log($"[ClearPings] Destroy endPing {endPingInstance.name} (activeInHierarchy={endPingInstance.activeInHierarchy})");
+
         if (startPingInstance != null) Destroy(startPingInstance);
         if (endPingInstance != null) Destroy(endPingInstance);
+
+        startPingInstance = null;
+        endPingInstance = null;
+
+        LogPingState("ClearPings AFTER");
     }
 
     // =========================================================
