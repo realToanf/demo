@@ -11,6 +11,7 @@ public class NavigationUITK : MonoBehaviour
     DropdownField toDropdown;
     DropdownField floorDropdown;
     Button navigateBtn;
+    bool isNavigating = false;
 
     void OnEnable()
     {
@@ -30,18 +31,21 @@ public class NavigationUITK : MonoBehaviour
 
         // UI -> controller
         floorDropdown.RegisterValueChangedCallback(_ => nav.SetFloorFromDropdown(floorDropdown.index));
-        fromDropdown.RegisterValueChangedCallback(_ => nav.SetFrom(fromDropdown.index));
-        toDropdown.RegisterValueChangedCallback(_ => nav.SetTo(toDropdown.index));
+        fromDropdown.RegisterValueChangedCallback(_ => {nav.SetFrom(fromDropdown.index); RefreshNavigateButtonState();});
+        toDropdown.RegisterValueChangedCallback(_ => {nav.SetTo(toDropdown.index); RefreshNavigateButtonState();});
         navigateBtn.clicked += nav.StartNavigation;
 
         // controller -> UI
         nav.FloorsChanged += RefreshFloors;
         nav.ActiveFloorChanged += RefreshActiveFloor;
         nav.SelectionChanged += RefreshSelections;
+        nav.NavigationStateChanged += OnNavigationStateChanged;
 
         RefreshFloors();
         RefreshActiveFloor();
         RefreshSelections();
+        OnNavigationStateChanged(false);
+        RefreshNavigateButtonState();
     }
 
     void OnDisable()
@@ -51,9 +55,43 @@ public class NavigationUITK : MonoBehaviour
         nav.FloorsChanged -= RefreshFloors;
         nav.ActiveFloorChanged -= RefreshActiveFloor;
         nav.SelectionChanged -= RefreshSelections;
+        nav.NavigationStateChanged -= OnNavigationStateChanged;
 
         if (navigateBtn != null)
             navigateBtn.clicked -= nav.StartNavigation;
+    }
+
+    void OnNavigationStateChanged(bool navigating)
+    {
+        isNavigating = navigating;
+        if (navigateBtn == null) return;
+
+        if (navigating)
+        {
+            navigateBtn.text = "Hủy chỉ đường";
+            navigateBtn.AddToClassList("cancel");
+            navigateBtn.SetEnabled(true);
+        }
+        else
+        {
+            navigateBtn.text = "Bắt đầu đi";
+            navigateBtn.RemoveFromClassList("cancel");
+            RefreshNavigateButtonState();
+        }
+    }
+    
+    void RefreshNavigateButtonState()
+    {
+        if (navigateBtn == null || nav == null) return;
+
+        if (isNavigating)
+        {
+            navigateBtn.SetEnabled(true);
+            return;
+        }
+
+        bool valid = nav.SelectedFrom != nav.SelectedTo;
+        navigateBtn.SetEnabled(valid);
     }
 
     void RefreshFloors()
@@ -98,5 +136,7 @@ public class NavigationUITK : MonoBehaviour
 
         toDropdown.index = to;
         toDropdown.SetValueWithoutNotify(points[to]);
+
+        RefreshNavigateButtonState();
     }
 }

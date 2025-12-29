@@ -104,6 +104,8 @@ public class NavigationController : MonoBehaviour
     private float totalDistance = 0f;
     private bool isNavigating = false;
 
+    public event Action<bool> NavigationStateChanged;
+
     public Transform visualsRoot;
 
     // =========================================================
@@ -358,7 +360,7 @@ public class NavigationController : MonoBehaviour
     {
         if (allPoints.Count == 0) return;
 
-        StopNavigationVisuals();
+        CancelNavigation(false);
 
         SelectedFrom = Mathf.Clamp(index, 0, allPoints.Count - 1);
 
@@ -376,7 +378,7 @@ public class NavigationController : MonoBehaviour
     {
         if (allPoints.Count == 0) return;
 
-        StopNavigationVisuals();
+        CancelNavigation(false);
 
         SelectedTo = Mathf.Clamp(index, 0, allPoints.Count - 1);
 
@@ -388,16 +390,6 @@ public class NavigationController : MonoBehaviour
 
         SelectionChanged?.Invoke();
         PreviewPath();
-    }
-
-    void StopNavigationVisuals()
-    {
-        Debug.Log("[StopNavigationVisuals] called");
-        isNavigating = false;
-        navCorners = null;
-        revealDistance = 0f;
-        totalDistance = 0f;
-        ClearPings();
     }
 
     // =========================================================
@@ -446,6 +438,12 @@ public class NavigationController : MonoBehaviour
     public void StartNavigation()
     {
         Debug.Log("[StartNavigation] called");
+
+        if (isNavigating)
+        {
+            CancelNavigation(true);
+            return;
+        }
         LogPingState("StartNavigation BEFORE");
 
         if (allPoints.Count == 0) return;
@@ -468,7 +466,9 @@ public class NavigationController : MonoBehaviour
         navCorners = path.corners;
         totalDistance = ComputeTotalDistance(navCorners);
         revealDistance = 0f;
+
         isNavigating = true;
+        NavigationStateChanged?.Invoke(true);
 
         DrawLinePoints(GetPartialPath(navCorners, revealDistance));
 
@@ -476,6 +476,7 @@ public class NavigationController : MonoBehaviour
         if (camController == null)
         {
             Debug.LogError("NavigationController: CameraController not found.");
+            CancelNavigation(true);
             return;
         }
 
@@ -484,21 +485,88 @@ public class NavigationController : MonoBehaviour
             allPoints[SelectedTo],
             () =>
             {
+                if (!isNavigating) return;
                 revealDistance = totalDistance;
                 DrawLinePoints(GetPartialPath(navCorners, revealDistance));
                 isNavigating = false;
+                NavigationStateChanged?.Invoke(false);
                 LogPingState("StartNavigation COMPLETE");
             },
             pos =>
             {
+                if (!isNavigating) return;
                 ActivateFloorByY(pos.y);
 
-                revealDistance += revealSpeed * Time.deltaTime;
-                revealDistance = Mathf.Clamp(revealDistance, 0f, totalDistance);
+                float distAlong = GetDistanceAlongPath(navCorners, pos);
+                revealDistance = Mathf.Clamp(distAlong, 0f, totalDistance);
 
                 DrawLinePoints(GetPartialPath(navCorners, revealDistance));
             }
         );
+    }
+
+    public void CancelNavigation(bool restorePreview = true)
+    {
+        Debug.Log("[CancelNavigation] called");
+
+        var camController = mainCamera != null ? mainCamera.GetComponent<CameraController>() : null;
+        if (camController != null)
+        {
+            camController.CancelMove();
+        }
+
+        isNavigating = false;
+        navCorners = null;
+        revealDistance = 0f;
+        totalDistance = 0f;
+
+        ClearPath();
+
+        NavigationStateChanged?.Invoke(false);
+
+        if (restorePreview)
+        {
+            PreviewPath();
+        }
+    }
+
+    float GetDistanceAlongPath(Vector3[] corners, Vector3 worldPos)
+    {
+        if (corners == null || corners.Length < 2) return 0f;
+
+        float bestDistanceAlong = 0f;
+        float bestSqr = float.MaxValue;
+
+        float cumulative = 0f;
+
+        for (int i = 1; i < corners.Length; i++)
+        {
+            Vector3 a = corners[i - 1];
+            Vector3 b = corners[i];
+
+            Vector3 ab = b - a;
+            float abLen = ab.magnitude;
+            if (abLen < 0.0001f) continue;
+
+            Vector3 dir = ab / abLen;
+
+            // project point onto segment
+            float t = Vector3.Dot(worldPos - a, dir);
+            t = Mathf.Clamp(t, 0f, abLen);
+
+            Vector3 proj = a + dir * t;
+
+            float sqr = (worldPos - proj).sqrMagnitude;
+            if (sqr < bestSqr)
+            {
+                bestSqr = sqr;
+                bestDistanceAlong = cumulative + t;
+            }
+
+            cumulative += abLen;
+        }
+
+        return bestDistanceAlong;
     }
 
     void ClearPath()

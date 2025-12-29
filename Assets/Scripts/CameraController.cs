@@ -21,9 +21,10 @@ public class CameraController : MonoBehaviour
     public float maxHeight = 90f;
     public float minPitch = 20f;
     public float maxPitch = 80f;
-
     public float height = 50f;
-    public float moveSpeed = 16f;
+    public float moveSpeed = 8f;
+    public float followHeightOffset = 20f;
+    public float heightSmoothSpeed = 5f;
 
     [Header("Touch Settings")]
     public float touchPanMultiplier = 10f; // Multiplier for touch pan sensitivity
@@ -295,11 +296,11 @@ public class CameraController : MonoBehaviour
         Action onComplete = null,
         Action<Vector3> onStep = null
     )
-    {
+    {   
         if (from == null || to == null) return;
 
         if (moveRoutine != null)
-            StopCoroutine(moveRoutine);
+            CancelMove();
 
         Vector3 start = ProjectToNavMesh(from.position);
         Vector3 end   = ProjectToNavMesh(to.position);
@@ -315,6 +316,19 @@ public class CameraController : MonoBehaviour
         );
     }
 
+    public void CancelMove()
+    {
+        if (moveRoutine != null)
+        {
+            StopCoroutine(moveRoutine);
+            moveRoutine = null;
+        }
+
+        lockCamera = false;
+
+        lastTouchDist = 0;
+        lastTwoFingerCenter = Vector2.zero;
+    }
     // =================================================
     IEnumerator MoveRoutine(
         Vector3[] corners,
@@ -331,13 +345,14 @@ public class CameraController : MonoBehaviour
         if (corners.Length < 2)
         {
             lockCamera = false;
+            moveRoutine = null;
             yield break;
         }
 
         // ======================
         // 1️⃣ BAY LÊN CAO
         // ======================
-        Vector3 liftTarget = corners[0] + Vector3.up * height;
+        Vector3 liftTarget = corners[0] + Vector3.up * (height * 0.6f);
         Quaternion topDownRot = Quaternion.Euler(90f, 0f, 0f);
 
         while (Vector3.Distance(transform.position, liftTarget) > 0.05f)
@@ -345,7 +360,7 @@ public class CameraController : MonoBehaviour
             transform.position = Vector3.MoveTowards(
                 transform.position,
                 liftTarget,
-                moveSpeed * Time.deltaTime
+                (moveSpeed * 0.6f) * Time.deltaTime
             );
             transform.rotation = Quaternion.Slerp(
                 transform.rotation,
@@ -360,32 +375,27 @@ public class CameraController : MonoBehaviour
         // ======================
         for (int i = 1; i < corners.Length; i++)
         {
-            Vector3 target = corners[i] + Vector3.up * height;
-            onStep?.Invoke(corners[i]);
+            Vector3 target = corners[i];
 
-            while (Vector3.Distance(transform.position, target) > 0.05f)
+            while (Vector3.Distance(new Vector2(transform.position.x, transform.position.z),
+           new Vector2(target.x, target.z)) > 0.05f)
             {
-                transform.position = Vector3.MoveTowards(
+                // move XZ toward target
+                Vector3 desiredPos = Vector3.MoveTowards(
                     transform.position,
-                    target,
-                    moveSpeed * Time.deltaTime
+                    new Vector3(target.x, transform.position.y, target.z),
+                    (moveSpeed * 0.6f) * Time.deltaTime
                 );
 
-                // xoay nhẹ theo hướng di chuyển (Y)
-                // Vector3 dir = corners[i] - transform.position;
-                // dir.y = 0;
-                // if (dir.sqrMagnitude > 0.01f)
-                // {
-                //     Quaternion look = Quaternion.LookRotation(dir);
-                //     Quaternion birdRot = Quaternion.Euler(90f, look.eulerAngles.y, 0);
-                //     transform.rotation = Quaternion.Slerp(
-                //         transform.rotation,
-                //         birdRot,
-                //         rotateSpeed * Time.deltaTime
-                //     );
-                // }
+                // compute desired Y based on target.y + offset
+                float desiredY = target.y + followHeightOffset;
 
-                onStep?.Invoke(transform.position - Vector3.up * height);
+                // smooth Y
+                float newY = Mathf.Lerp(transform.position.y, desiredY, (heightSmoothSpeed * 0.6f) * Time.deltaTime);
+
+                transform.position = new Vector3(desiredPos.x, newY, desiredPos.z);
+
+                onStep?.Invoke(new Vector3(transform.position.x, target.y, transform.position.z));
                 yield return null;
             }
         }
@@ -405,7 +415,7 @@ public class CameraController : MonoBehaviour
         // offset chéo
         Vector3 overviewOffset =
             -pathDir * 10f +
-            Vector3.up * height;
+            Vector3.up * (height * 0.6f);
 
         Vector3 overviewPos = center + overviewOffset;
 
@@ -419,7 +429,7 @@ public class CameraController : MonoBehaviour
             transform.position = Vector3.MoveTowards(
                 transform.position,
                 overviewPos,
-                moveSpeed * Time.deltaTime
+                (moveSpeed * 0.6f) * Time.deltaTime
             );
 
             transform.rotation = Quaternion.Slerp(
@@ -433,6 +443,8 @@ public class CameraController : MonoBehaviour
 
         onComplete?.Invoke();
         lockCamera = false;
+
+        moveRoutine = null;
     }
 
     Vector3 ProjectToNavMesh(Vector3 pos)

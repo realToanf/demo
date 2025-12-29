@@ -68,6 +68,18 @@
     background-color: rgb(21, 128, 61);
 }
 
+.cta.cancel {
+    background-color: rgb(220, 38, 38);
+}
+
+.cta.cancel:hover {
+    background-color: rgb(185, 28, 28);
+}
+
+.cta:disabled {
+    opacity: 0.45;
+}
+
 .divider {
     height: 1px;
     background-color: rgb(234,236,240);
