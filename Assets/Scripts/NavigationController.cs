@@ -466,6 +466,7 @@ public class NavigationController : MonoBehaviour
             return;
         }
 
+        camController.SnapToBirdEye(allPoints[SelectedFrom], 55f, 75f);
         camController.MoveBirdEyeFromTo(
             allPoints[SelectedFrom],
             allPoints[SelectedTo],

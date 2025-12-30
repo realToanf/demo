@@ -3,23 +3,36 @@
     <ui:VisualElement class="root">
         <ui:VisualElement class="card">
             <ui:VisualElement class="header">
-                <ui:Label text="Ch&#7881; &#273;&#432;&#7901;ng" class="title"/>
-                <ui:Button text="&#9881;" name="settingsBtn" class="iconBtn"/>
+                <ui:Label text="Chỉ đường" class="title"/>
+                <ui:Button text="⚙" name="settingsBtn" class="iconBtn"/>
             </ui:VisualElement>
+
+            <!-- FROM -->
             <ui:VisualElement class="field">
-                <ui:Label text="B&#7855;t &#273;&#7847;u t&#7915; ph&#242;ng &#128994;&#128205;" class="label" style="font-size: 15px;"/>
+                <ui:VisualElement class="labelRow">
+                    <ui:Label text="Bắt đầu từ phòng" class="label" style="font-size: 15px;"/>
+                    <ui:VisualElement class="pin pin--green" />
+                </ui:VisualElement>
                 <ui:DropdownField name="fromDropdown" class="dropdown"/>
             </ui:VisualElement>
+
+            <!-- TO -->
             <ui:VisualElement class="field">
-                <ui:Label text="T&#7899;i ph&#242;ng &#128308;&#128205;" class="label" style="font-size: 15px;"/>
+                <ui:VisualElement class="labelRow">
+                    <ui:Label text="Tới phòng" class="label" style="font-size: 15px;"/>
+                    <ui:VisualElement class="pin pin--red" />
+                </ui:VisualElement>
                 <ui:DropdownField name="toDropdown" class="dropdown"/>
             </ui:VisualElement>
-            <ui:Button text="B&#7855;t &#273;&#7847;u &#273;i" name="navigateBtn" class="cta"/>
+
+            <ui:Button text="Bắt đầu đi" name="navigateBtn" class="cta"/>
             <ui:VisualElement class="divider"/>
+
             <ui:VisualElement class="field">
-                <ui:Label text="Ch&#7885;n t&#7847;ng" class="label" style="font-size: 15px;"/>
+                <ui:Label text="Chọn tầng" class="label" style="font-size: 15px;"/>
                 <ui:DropdownField name="floorDropdown" class="dropdown"/>
             </ui:VisualElement>
+
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

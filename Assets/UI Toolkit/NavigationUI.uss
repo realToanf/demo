@@ -100,3 +100,31 @@
     outline-width: 0px;
     box-shadow: none;
 }
+
+.labelRow {
+    flex-direction: row;
+    align-items: center;
+}
+
+.labelRow .label {
+    flex-grow: 1;     /* pushes icon to the right */
+}
+
+.pin {
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+/* Put these pngs in Assets/Resources/ */
+.pin--red {
+    background-image: resource("pin_red");
+}
+
+.pin--green {
+    background-image: resource("pin_green");
+}

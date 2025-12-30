@@ -453,4 +453,24 @@ public class CameraController : MonoBehaviour
             return hit.position;
         return pos;
     }
+
+    public void SnapToBirdEye(Transform target, float snapHeight = 40f, float pitch = 75f)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        mode = CameraMode.BirdEye;
+
+        birdPivot = target.position;
+
+        float yaw = transform.eulerAngles.y;
+
+        currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+
+        Quaternion rot = Quaternion.Euler(currentPitch, yaw, 0f);
+        transform.position = birdPivot + rot * Vector3.back * snapHeight;
+        transform.LookAt(birdPivot);
+    }
 }
