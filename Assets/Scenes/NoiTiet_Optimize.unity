@@ -3753,8 +3753,8 @@ MonoBehaviour:
   textureScrollSpeed: 1
   makeFloorsTransparentInNav: 1
   navAlpha: 0.35
-  navTransparentMaterial: {fileID: 0}
-  visualsRoot: {fileID: 0}
+  navTransparentMaterial: {fileID: 2100000, guid: 83fd62bcb2a0ed145849b27c8230cd9b, type: 2}
+  visualsRoot: {fileID: 801480134}
 --- !u!4 &206206584
 Transform:
   m_ObjectHideFlags: 0

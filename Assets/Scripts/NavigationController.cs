@@ -47,6 +47,7 @@ public class NavigationController : MonoBehaviour
     [Range(0.05f, 1f)] public float navAlpha = 0.35f;
     public Material navTransparentMaterial;
 
+    // cache renderer -> original materials (restore later)
     private readonly Dictionary<Renderer, Material[]> originalMats = new();
 
     // ----- Public state (for UI Toolkit) -----
@@ -55,13 +56,17 @@ public class NavigationController : MonoBehaviour
 
     public int ActiveFloorIndex { get; private set; } = 0;
 
-    // ✅ -1 means "not selected"
+    // -1 means "not selected"
     public int SelectedFrom { get; private set; } = -1;
     public int SelectedTo { get; private set; } = -1;
+
+    // stays true after camera finishes, until user cancels
+    public bool IsRouteActive { get; private set; } = false;
 
     public event Action FloorsChanged;
     public event Action ActiveFloorChanged;
     public event Action SelectionChanged;
+    public event Action<bool> NavigationStateChanged;
 
     // Floors
     private readonly List<Transform> floors = new();
@@ -71,22 +76,22 @@ public class NavigationController : MonoBehaviour
     private readonly Dictionary<int, List<Transform>> floorPoints = new();
     private readonly Dictionary<int, List<GameObject>> floorLabels = new();
 
-    // All points across all floors (ONLY real points now)
+    // All points across all floors (ONLY real points)
     private readonly List<Transform> allPoints = new();
     private readonly List<string> allPointNames = new();
     private readonly List<int> allPointFloorIndex = new(); // point -> floor index
 
     private NavMeshPath path;
 
-    // Visible floors (single-floor mode => only 1 visible)
+    // Visible floors
     public IReadOnlyCollection<int> VisibleFloors => visibleFloors;
     private readonly HashSet<int> visibleFloors = new();
 
     public bool ShowAllFloors { get; private set; } = false;
+
     public IReadOnlyList<string> FloorDropdownOptions => floorDropdownOptions;
     private readonly List<string> floorDropdownOptions = new();
     public int SelectedFloorDropdownIndex { get; private set; } = 1;
-    public bool IsRouteActive { get; private set; } = false;
 
     // Floor ranges for auto switching during camera movement
     private struct FloorRange
@@ -95,7 +100,6 @@ public class NavigationController : MonoBehaviour
         public float minY;
         public float maxY;
     }
-
     private readonly List<FloorRange> floorRanges = new();
 
     // Navigation state
@@ -107,42 +111,11 @@ public class NavigationController : MonoBehaviour
     private float totalDistance = 0f;
     private bool isNavigating = false;
 
-    public event Action<bool> NavigationStateChanged;
-
     public Transform visualsRoot;
 
     // =========================================================
-    // DEBUG HELPERS
+    // STARTUP
     // =========================================================
-    void LogPingState(string tag)
-    {
-        string sr = startPingInstance ? startPingInstance.name : "null";
-        string er = endPingInstance ? endPingInstance.name : "null";
-
-        string sActive = startPingInstance ? startPingInstance.activeInHierarchy.ToString() : "n/a";
-        string eActive = endPingInstance ? endPingInstance.activeInHierarchy.ToString() : "n/a";
-
-        string root = visualsRoot ? visualsRoot.name : "null";
-        string rootActive = visualsRoot ? visualsRoot.gameObject.activeInHierarchy.ToString() : "n/a";
-
-        Debug.Log(
-            $"[{tag}] from={SelectedFrom} to={SelectedTo} " +
-            $"start={sr} (active={sActive}) end={er} (active={eActive}) " +
-            $"visualsRoot={root} (active={rootActive}) " +
-            $"ActiveFloorIndex={ActiveFloorIndex} ShowAllFloors={ShowAllFloors} " +
-            $"isNavigating={isNavigating}"
-        );
-    }
-
-    void LogFloorsState(string tag)
-    {
-        string vis = "";
-        foreach (var idx in visibleFloors)
-            vis += idx + ",";
-
-        Debug.Log($"[{tag}] ActiveFloorIndex={ActiveFloorIndex} ShowAllFloors={ShowAllFloors} VisibleFloors={vis}");
-    }
-
     IEnumerator Start()
     {
         yield return null;
@@ -185,7 +158,6 @@ public class NavigationController : MonoBehaviour
         LoadFloorsAndWaypoints();
         BuildFloorDropdownOptions();
         BuildFloorRanges();
-
         SetupLineStyle();
 
         FloorsChanged?.Invoke();
@@ -237,12 +209,11 @@ public class NavigationController : MonoBehaviour
         floorLabels.Clear();
         floorNames.Clear();
 
-        // ✅ Clear all points first (ONLY real points)
+        // only real points
         allPoints.Clear();
         allPointNames.Clear();
         allPointFloorIndex.Clear();
 
-        // ✅ Default selections: nothing selected
         SelectedFrom = -1;
         SelectedTo = -1;
 
@@ -283,15 +254,10 @@ public class NavigationController : MonoBehaviour
     // =========================================================
     void ApplyVisibleFloors()
     {
-        LogFloorsState("ApplyVisibleFloors BEFORE");
-
         for (int i = 0; i < floors.Count; i++)
             floors[i].gameObject.SetActive(visibleFloors.Contains(i));
 
         UpdateLabelsVisibility();
-
-        LogFloorsState("ApplyVisibleFloors AFTER");
-        LogPingState("ApplyVisibleFloors PingState");
     }
 
     void UpdateLabelsVisibility()
@@ -310,8 +276,6 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloor(int index)
     {
-        Debug.Log($"[SetFloor] Request index={index}");
-
         if (ShowAllFloors) return;
         if (floors.Count == 0) return;
 
@@ -368,7 +332,9 @@ public class NavigationController : MonoBehaviour
     {
         if (allPoints.Count == 0) return;
 
+        // selecting new from/to should exit nav mode + restore materials
         CancelNavigation(false);
+        ApplyNavTransparency(false);
 
         SelectedFrom = Mathf.Clamp(index, 0, allPoints.Count - 1);
 
@@ -388,6 +354,7 @@ public class NavigationController : MonoBehaviour
         if (allPoints.Count == 0) return;
 
         CancelNavigation(false);
+        ApplyNavTransparency(false);
 
         SelectedTo = Mathf.Clamp(index, 0, allPoints.Count - 1);
 
@@ -407,12 +374,9 @@ public class NavigationController : MonoBehaviour
     // =========================================================
     public void PreviewPath()
     {
-        Debug.Log($"[PreviewPath] called. isNavigating={isNavigating}");
-
         if (allPoints.Count == 0) return;
         if (isNavigating) return;
 
-        // ✅ Need both selected
         if (SelectedFrom < 0 || SelectedTo < 0)
         {
             ClearPath();
@@ -420,18 +384,15 @@ public class NavigationController : MonoBehaviour
             return;
         }
 
-        int from = SelectedFrom;
-        int to = SelectedTo;
-
-        if (from == to)
+        if (SelectedFrom == SelectedTo)
         {
             ClearPath();
             ClearPings();
             return;
         }
 
-        Vector3 start = allPoints[from].position;
-        Vector3 end = allPoints[to].position;
+        Vector3 start = allPoints[SelectedFrom].position;
+        Vector3 end = allPoints[SelectedTo].position;
 
         if (NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
         {
@@ -450,22 +411,24 @@ public class NavigationController : MonoBehaviour
 
     public void StartNavigation()
     {
-        Debug.Log("[StartNavigation] called");
-
         if (isNavigating)
         {
+            // user clicked cancel while moving
             CancelNavigation(true);
             return;
         }
 
         if (allPoints.Count == 0) return;
-
-        // ✅ Need both selected
         if (SelectedFrom < 0 || SelectedTo < 0) return;
         if (SelectedFrom == SelectedTo) return;
 
+        // route becomes active and stays active after camera finishes
         IsRouteActive = true;
-        NavigationStateChanged?.Invoke(true);   
+        NavigationStateChanged?.Invoke(true);
+
+        // Cross-floor transparency
+        bool crossFloor = IsCrossFloorRoute() || ShowAllFloors;
+        ApplyNavTransparency(crossFloor);
 
         ExitAllFloorsAndFocusFloor(allPointFloorIndex[SelectedFrom]);
 
@@ -486,7 +449,7 @@ public class NavigationController : MonoBehaviour
         revealDistance = 0f;
 
         isNavigating = true;
-        NavigationStateChanged?.Invoke(true);
+        // (we already invoked NavigationStateChanged(true) above)
 
         DrawLinePoints(GetPartialPath(navCorners, revealDistance));
 
@@ -504,9 +467,13 @@ public class NavigationController : MonoBehaviour
             () =>
             {
                 if (!isNavigating) return;
+
+                // movement finished - route is still active
                 revealDistance = totalDistance;
                 DrawLinePoints(GetPartialPath(navCorners, revealDistance));
+
                 isNavigating = false;
+                // IMPORTANT: do NOT call NavigationStateChanged(false) here
             },
             pos =>
             {
@@ -525,9 +492,7 @@ public class NavigationController : MonoBehaviour
     {
         var camController = mainCamera != null ? mainCamera.GetComponent<CameraController>() : null;
         if (camController != null)
-        {
             camController.CancelMove();
-        }
 
         isNavigating = false;
         navCorners = null;
@@ -535,6 +500,10 @@ public class NavigationController : MonoBehaviour
         totalDistance = 0f;
 
         ClearPath();
+
+        // restore transparency when leaving nav mode
+        ApplyNavTransparency(false);
+
         IsRouteActive = false;
         NavigationStateChanged?.Invoke(false);
 
@@ -542,13 +511,27 @@ public class NavigationController : MonoBehaviour
             PreviewPath();
     }
 
+    // called by UITK "Hủy chỉ đường"
+    public void CancelAndResetToPlaceholder()
+    {
+        CancelNavigation(false); // clears path/pings + restores mats + sets IsRouteActive=false
+
+        SelectedFrom = -1;
+        SelectedTo = -1;
+
+        SelectionChanged?.Invoke();
+        PreviewPath();
+    }
+
+    // =========================================================
+    // DISTANCE HELPERS
+    // =========================================================
     float GetDistanceAlongPath(Vector3[] corners, Vector3 worldPos)
     {
         if (corners == null || corners.Length < 2) return 0f;
 
         float bestDistanceAlong = 0f;
         float bestSqr = float.MaxValue;
-
         float cumulative = 0f;
 
         for (int i = 1; i < corners.Length; i++)
@@ -582,7 +565,7 @@ public class NavigationController : MonoBehaviour
 
     void ClearPath()
     {
-        line.positionCount = 0;
+        if (line != null) line.positionCount = 0;
         ClearPings();
     }
 
@@ -629,6 +612,9 @@ public class NavigationController : MonoBehaviour
 
     void DrawLinePoints(List<Vector3> pts)
     {
+        if (line == null)
+            return;
+
         if (pts == null || pts.Count == 0)
         {
             ClearPath();
@@ -665,6 +651,9 @@ public class NavigationController : MonoBehaviour
             line.colorGradient = lineGradient;
     }
 
+    // =========================================================
+    // PINGS
+    // =========================================================
     void SpawnPings()
     {
         ClearPings();
@@ -862,14 +851,86 @@ public class NavigationController : MonoBehaviour
         PreviewPath();
     }
 
-    public void CancelAndResetToPlaceholder()
+    // =========================================================
+    // TRANSPARENCY (CROSSFLOOR)
+    // =========================================================
+    bool IsCrossFloorRoute()
     {
-        CancelNavigation(false); // already sets IsRouteActive=false and fires NavigationStateChanged(false)
+        if (SelectedFrom < 0 || SelectedTo < 0) return false;
 
-        SelectedFrom = -1;
-        SelectedTo = -1;
+        int fromFloor = allPointFloorIndex[SelectedFrom];
+        int toFloor = allPointFloorIndex[SelectedTo];
 
-        SelectionChanged?.Invoke();
-        PreviewPath();
+        if (fromFloor < 0 || toFloor < 0) return false;
+        return fromFloor != toFloor;
+    }
+
+    void ApplyNavTransparency(bool enabled)
+    {
+        if (!makeFloorsTransparentInNav) return;
+        if (floors == null || floors.Count == 0) return;
+
+        if (navTransparentMaterial == null)
+        {
+            Debug.LogWarning("NavigationController: navTransparentMaterial is NULL.");
+            return;
+        }
+
+        if (enabled)
+        {
+            SetMaterialAlpha(navTransparentMaterial, navAlpha);
+
+            for (int i = 0; i < floors.Count; i++)
+            {
+                var renderers = floors[i].GetComponentsInChildren<Renderer>(true);
+                foreach (var r in renderers)
+                {
+                    if (r == null) continue;
+
+                    if (!originalMats.ContainsKey(r))
+                        originalMats[r] = r.sharedMaterials;
+
+                    var mats = new Material[r.sharedMaterials.Length];
+                    for (int m = 0; m < mats.Length; m++)
+                        mats[m] = navTransparentMaterial;
+
+                    r.sharedMaterials = mats;
+                }
+            }
+        }
+        else
+        {
+            RestoreOriginalMaterials();
+        }
+    }
+
+    void RestoreOriginalMaterials()
+    {
+        foreach (var kv in originalMats)
+        {
+            if (kv.Key == null) continue;
+            kv.Key.sharedMaterials = kv.Value;
+        }
+        originalMats.Clear();
+    }
+
+    void SetMaterialAlpha(Material mat, float alpha)
+    {
+        if (mat == null) return;
+
+        // URP Lit/Unlit: _BaseColor
+        if (mat.HasProperty("_BaseColor"))
+        {
+            Color c = mat.GetColor("_BaseColor");
+            c.a = alpha;
+            mat.SetColor("_BaseColor", c);
+        }
+        // Built-in fallback: _Color
+        else if (mat.HasProperty("_Color"))
+        {
+            Color c = mat.GetColor("_Color");
+            c.a = alpha;
+            mat.SetColor("_Color", c);
+        }
     }
 }
