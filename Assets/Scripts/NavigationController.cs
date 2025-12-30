@@ -42,8 +42,8 @@ public class NavigationController : MonoBehaviour
     public float textureScrollSpeed = 1f;
     private float textureOffset = 0f;
 
-    [Header("Navigation Transparency")]
-    public bool makeFloorsTransparentInNav = true;
+    [Header("Navigation Transparency (DISABLED in cross-floor mode)")]
+    public bool makeFloorsTransparentInNav = false; // keep false to avoid "transparent soup"
     [Range(0.05f, 1f)] public float navAlpha = 0.35f;
     public Material navTransparentMaterial;
 
@@ -110,6 +110,11 @@ public class NavigationController : MonoBehaviour
     private float revealDistance = 0f;
     private float totalDistance = 0f;
     private bool isNavigating = false;
+
+    // Track nav floors so cross-floor keeps BOTH visible
+    private int navFromFloor = -1;
+    private int navToFloor = -1;
+    private bool navIsCrossFloor = false;
 
     public Transform visualsRoot;
 
@@ -332,7 +337,6 @@ public class NavigationController : MonoBehaviour
     {
         if (allPoints.Count == 0) return;
 
-        // selecting new from/to should exit nav mode + restore materials
         CancelNavigation(false);
         ApplyNavTransparency(false);
 
@@ -413,7 +417,6 @@ public class NavigationController : MonoBehaviour
     {
         if (isNavigating)
         {
-            // user clicked cancel while moving
             CancelNavigation(true);
             return;
         }
@@ -426,11 +429,14 @@ public class NavigationController : MonoBehaviour
         IsRouteActive = true;
         NavigationStateChanged?.Invoke(true);
 
-        // Cross-floor transparency
-        bool crossFloor = IsCrossFloorRoute() || ShowAllFloors;
-        ApplyNavTransparency(crossFloor);
+        navFromFloor = allPointFloorIndex[SelectedFrom];
+        navToFloor = allPointFloorIndex[SelectedTo];
+        navIsCrossFloor = IsCrossFloorRoute() || ShowAllFloors;
 
-        ExitAllFloorsAndFocusFloor(allPointFloorIndex[SelectedFrom]);
+        ExitAllFloorsAndFocusFloor(navFromFloor);
+
+        ShowAllFloors = false;
+        ExitAllFloorsAndFocusFloor(navFromFloor);
 
         SpawnPings();
 
@@ -449,7 +455,6 @@ public class NavigationController : MonoBehaviour
         revealDistance = 0f;
 
         isNavigating = true;
-        // (we already invoked NavigationStateChanged(true) above)
 
         DrawLinePoints(GetPartialPath(navCorners, revealDistance));
 
@@ -468,16 +473,24 @@ public class NavigationController : MonoBehaviour
             {
                 if (!isNavigating) return;
 
-                // movement finished - route is still active
                 revealDistance = totalDistance;
                 DrawLinePoints(GetPartialPath(navCorners, revealDistance));
 
                 isNavigating = false;
-                // IMPORTANT: do NOT call NavigationStateChanged(false) here
+
+                // ensure both floors stay visible at end for cross-floor routes
+                if (navIsCrossFloor && navFromFloor >= 0 && navToFloor >= 0)
+                {
+                    visibleFloors.Clear();
+                    visibleFloors.Add(navFromFloor);
+                    visibleFloors.Add(navToFloor);
+                    ApplyVisibleFloors();
+                }
             },
             pos =>
             {
                 if (!isNavigating) return;
+
                 ActivateFloorByY(pos.y);
 
                 float distAlong = GetDistanceAlongPath(navCorners, pos);
@@ -501,8 +514,12 @@ public class NavigationController : MonoBehaviour
 
         ClearPath();
 
-        // restore transparency when leaving nav mode
+        // We are not using transparency anymore, but keep restore for safety.
         ApplyNavTransparency(false);
+
+        navFromFloor = -1;
+        navToFloor = -1;
+        navIsCrossFloor = false;
 
         IsRouteActive = false;
         NavigationStateChanged?.Invoke(false);
@@ -511,10 +528,9 @@ public class NavigationController : MonoBehaviour
             PreviewPath();
     }
 
-    // called by UITK "Hủy chỉ đường"
     public void CancelAndResetToPlaceholder()
     {
-        CancelNavigation(false); // clears path/pings + restores mats + sets IsRouteActive=false
+        CancelNavigation(false);
 
         SelectedFrom = -1;
         SelectedTo = -1;
@@ -801,6 +817,29 @@ public class NavigationController : MonoBehaviour
         if (bestIndex < 0) return;
         if (ActiveFloorIndex == bestIndex) return;
 
+        // If cross-floor route is active, keep BOTH floors visible.
+        if (IsRouteActive && navIsCrossFloor)
+        {
+            if (isNavigating)
+            {
+                // During camera move: switch visible floor BUT don't call PreviewPath
+                ActiveFloorIndex = bestIndex;
+
+                visibleFloors.Clear();
+                visibleFloors.Add(bestIndex);
+
+                ApplyVisibleFloors();
+                ActiveFloorChanged?.Invoke();
+            }
+            else
+            {
+                // after movement: keep both floors visible, only update active index
+                ActiveFloorIndex = bestIndex;
+                ActiveFloorChanged?.Invoke();
+            }
+            return;
+        }
+
         SetFloor(bestIndex);
     }
 
@@ -852,7 +891,7 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
-    // TRANSPARENCY (CROSSFLOOR)
+    // TRANSPARENCY (LEFT AS FALLBACK - NOT USED)
     // =========================================================
     bool IsCrossFloorRoute()
     {
@@ -886,6 +925,10 @@ public class NavigationController : MonoBehaviour
                 foreach (var r in renderers)
                 {
                     if (r == null) continue;
+
+                    // Skip TMP labels to avoid pink text materials
+                    if (r.GetComponent<TextMeshPro>() != null) continue;
+                    if (r.GetComponent<TMP_SubMesh>() != null) continue;
 
                     if (!originalMats.ContainsKey(r))
                         originalMats[r] = r.sharedMaterials;

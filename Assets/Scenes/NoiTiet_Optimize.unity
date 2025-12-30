@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 1
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 1, g: 1, b: 1, a: 1}
-  m_SkyboxMaterial: {fileID: 2100000, guid: dd61c55b60a6070408b6a6d953e92523, type: 2}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 85cf0b004bc4a654b9e501efcce47902, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -3957,7 +3957,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 83fd62bcb2a0ed145849b27c8230cd9b, type: 2}
+  - {fileID: 2100000, guid: a3b8e0520d63e0b40a0d6df4ba45ed3d, type: 2}
   - {fileID: 2100000, guid: 165e1d6e13efae94084eb815bd15f25d, type: 2}
   - {fileID: 2100000, guid: 6df3b2a17c5be7f4fa0187dd16f1f733, type: 2}
   m_StaticBatchInfo:
@@ -148540,7 +148540,7 @@ Light:
   m_InnerSpotAngle: 21.80208
   m_CookieSize2D: {x: 0.5, y: 0.5}
   m_Shadows:
-    m_Type: 1
+    m_Type: 0
     m_Resolution: -1
     m_CustomResolution: -1
     m_Strength: 1
@@ -148584,7 +148584,7 @@ Light:
   m_UseViewFrustumForShadowCasterCull: 1
   m_ForceVisible: 0
   m_ShadowRadius: 0
-  m_ShadowAngle: 0
+  m_ShadowAngle: 5
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
@@ -200102,7 +200102,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: ab244d61e869ae24b8ffa56b16ad5937, type: 2}
+  - {fileID: 2100000, guid: da75a2b0610b0f0438156ce652e50510, type: 2}
   - {fileID: 2100000, guid: 165e1d6e13efae94084eb815bd15f25d, type: 2}
   - {fileID: 2100000, guid: 6df3b2a17c5be7f4fa0187dd16f1f733, type: 2}
   m_StaticBatchInfo:
