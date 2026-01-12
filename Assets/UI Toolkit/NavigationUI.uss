@@ -128,3 +128,20 @@
 .pin--green {
     background-image: resource("pin_green");
 }
+
+.modeBtn {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    height: 40px;
+    border-radius: 12px;
+
+    background-color: rgb(17,24,39);
+    color: white;
+
+    unity-font-style: bold;
+    font-size: 14px;
+}
+
+.modeBtn:hover {
+    background-color: rgb(31,41,55);
+}

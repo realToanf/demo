@@ -10,7 +10,6 @@
             <ui:VisualElement class="field">
                 <ui:VisualElement class="labelRow">
                     <ui:Label text="Bắt đầu từ phòng" class="label" style="font-size: 15px;"/>
-                    <ui:VisualElement class="pin pin--green" />
                 </ui:VisualElement>
                 <ui:DropdownField name="fromDropdown" class="dropdown"/>
             </ui:VisualElement>
@@ -19,7 +18,6 @@
             <ui:VisualElement class="field">
                 <ui:VisualElement class="labelRow">
                     <ui:Label text="Tới phòng" class="label" style="font-size: 15px;"/>
-                    <ui:VisualElement class="pin pin--red" />
                 </ui:VisualElement>
                 <ui:DropdownField name="toDropdown" class="dropdown"/>
             </ui:VisualElement>
@@ -27,10 +25,15 @@
             <ui:Button text="Bắt đầu đi" name="navigateBtn" class="cta"/>
             <ui:VisualElement class="divider"/>
 
-            <ui:VisualElement class="field">
-                <ui:Label text="Chọn tầng" class="label" style="font-size: 15px;"/>
-                <ui:DropdownField name="floorDropdown" class="dropdown"/>
+            <ui:VisualElement name="floorSection">
+                <ui:VisualElement class="field">
+                    <ui:Label text="Chọn tầng" class="label" style="font-size: 15px;"/>
+                    <ui:DropdownField name="floorDropdown" class="dropdown"/>
+                </ui:VisualElement>
             </ui:VisualElement>
+
+            <ui:Button name="modeBtn" text="Chuyển chế độ" class="modeBtn" />
+                
 
         </ui:VisualElement>
     </ui:VisualElement>
