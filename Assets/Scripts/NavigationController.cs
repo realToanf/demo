@@ -46,6 +46,16 @@ public class NavigationController : MonoBehaviour
     public bool makeFloorsTransparentInNav = true;
     [Range(0.05f, 1f)] public float navAlpha = 0.35f;
 
+    // ---------------------------------------------------------
+    // Props Visibility (NEW)
+    // ---------------------------------------------------------
+    [Header("Props Visibility")]
+    public string propsRootName = "Props";
+    public bool hidePropsWhenTransparent = true;
+
+    // cache per-floor Props roots (NEW)
+    private readonly List<Transform> floorPropsRoots = new();
+
     // cache renderer -> original materials (restore later)
     private readonly Dictionary<Renderer, Material[]> originalMats = new();
 
@@ -216,6 +226,9 @@ public class NavigationController : MonoBehaviour
         floorLabels.Clear();
         floorNames.Clear();
 
+        // NEW: cache props roots per floor
+        floorPropsRoots.Clear();
+
         // only real points
         allPoints.Clear();
         allPointNames.Clear();
@@ -229,6 +242,10 @@ public class NavigationController : MonoBehaviour
             Transform floor = floorsRoot.GetChild(i);
             floors.Add(floor);
             floorNames.Add(floor.name);
+
+            // NEW: cache Props root (can be null if not found)
+            Transform propsRoot = floor.Find(propsRootName);
+            floorPropsRoots.Add(propsRoot);
 
             var points = new List<Transform>();
             var labels = new List<GameObject>();
@@ -778,16 +795,39 @@ public class NavigationController : MonoBehaviour
         go.transform.SetParent(wp);
         go.transform.localPosition = Vector3.up * labelHeight;
 
-        var text = go.AddComponent<TextMeshPro>();
-        text.text = wp.name;
-        text.font = labelFont;
-        text.fontSize = labelSize;
-        text.color = Color.white;
-        text.alignment = TextAlignmentOptions.Center;
-        text.enableWordWrapping = false;
+        var tmp = go.AddComponent<TextMeshPro>();
+        tmp.text = wp.name;
+        tmp.font = labelFont;
+        tmp.fontSize = labelSize * 0.6f;
 
-        text.outlineWidth = 0.2f;
-        text.outlineColor = new Color32(0, 0, 0, 180);
+        tmp.color = new Color32(17, 59, 47, 255);
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.enableWordWrapping = false;
+        tmp.richText = true;
+
+        tmp.extraPadding = true;
+        tmp.enableKerning = true;
+        tmp.fontStyle = FontStyles.Bold;
+
+        tmp.enableAutoSizing = true;
+        tmp.fontSizeMin = labelSize * 0.75f;
+        tmp.fontSizeMax = labelSize;
+
+        tmp.characterSpacing = 1.5f;
+        tmp.lineSpacing = -10f;
+
+        tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
+
+        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, 0.15f);
+
+        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.08f);
+        tmp.fontMaterial.SetColor(ShaderUtilities.ID_OutlineColor, new Color32(0, 0, 0, 160));
+
+        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0.6f);
+        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlayDilate, 0.15f);
+        tmp.fontMaterial.SetColor(ShaderUtilities.ID_UnderlayColor, new Color32(0, 0, 0, 160));
+        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, 0.9f);
+        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, -1.2f);
 
         go.AddComponent<Billboard>();
         return go;
@@ -938,6 +978,23 @@ public class NavigationController : MonoBehaviour
         return fromFloor != toFloor;
     }
 
+    // NEW: hide/show props based on whether transparency mode is enabled
+    void ApplyPropsVisibility(bool transparentMode)
+    {
+        if (!hidePropsWhenTransparent) return;
+
+        bool showProps = !transparentMode;
+
+        for (int i = 0; i < floorPropsRoots.Count; i++)
+        {
+            var propsRoot = floorPropsRoots[i];
+            if (propsRoot == null) continue;
+
+            if (propsRoot.gameObject.activeSelf != showProps)
+                propsRoot.gameObject.SetActive(showProps);
+        }
+    }
+
     void ApplyNavTransparency(bool enabled)
     {
         if (!makeFloorsTransparentInNav) return;
@@ -987,6 +1044,9 @@ public class NavigationController : MonoBehaviour
         {
             RestoreOriginalMaterials();
         }
+
+        // NEW: keep props in sync with transparency mode
+        ApplyPropsVisibility(enabled);
     }
 
     Material GetOrCreateTransparentClone(Material original, float alpha)
@@ -1059,4 +1119,3 @@ public class NavigationController : MonoBehaviour
         transparentCloneCache.Clear();
     }
 }
-        

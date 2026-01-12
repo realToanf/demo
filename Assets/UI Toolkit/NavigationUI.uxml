@@ -4,7 +4,6 @@
         <ui:VisualElement class="card">
             <ui:VisualElement class="header">
                 <ui:Label text="Chỉ đường" class="title"/>
-                <ui:Button text="⚙" name="settingsBtn" class="iconBtn"/>
             </ui:VisualElement>
 
             <!-- FROM -->
