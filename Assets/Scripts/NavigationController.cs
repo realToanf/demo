@@ -1,3 +1,4 @@
+// NavigationController.cs
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,6 +19,13 @@ public class NavigationController : MonoBehaviour
     public TMP_FontAsset labelFont;
     public float labelHeight = 1f;
     public float labelSize = 8f;
+
+    [Header("Label Scaling")]
+    public float minLabelSize = 0.8f;
+    public float maxLabelSize = 2.2f;
+    public float sizeAt1Meter = 1.4f;          // (Optional) not used in default scaling mode below
+    public float scaleStartDistance = 2f;
+    public float scaleEndDistance = 30f;
 
     [Header("Camera")]
     public Transform mainCamera;
@@ -46,14 +54,22 @@ public class NavigationController : MonoBehaviour
     public bool makeFloorsTransparentInNav = true;
     [Range(0.05f, 1f)] public float navAlpha = 0.35f;
 
+    [Header("Nav Alpha Split")]
+    [Range(0.05f, 1f)] public float navFloorAlpha = 0.22f;
+    [Range(0.05f, 1f)] public float navWallAlpha  = 0.45f;
+    [Range(0.05f, 1f)] public float navOtherAlpha = 0.55f;
+
+    [Header("Hierarchy names")]
+    public string floorRootName = "Floor";
+    public string wallRootName  = "Wall";
     // ---------------------------------------------------------
-    // Props Visibility (NEW)
+    // Props Visibility
     // ---------------------------------------------------------
     [Header("Props Visibility")]
     public string propsRootName = "Props";
     public bool hidePropsWhenTransparent = true;
 
-    // cache per-floor Props roots (NEW)
+    // cache per-floor Props roots
     private readonly List<Transform> floorPropsRoots = new();
 
     // cache renderer -> original materials (restore later)
@@ -130,6 +146,20 @@ public class NavigationController : MonoBehaviour
 
     public Transform visualsRoot;
 
+    // ---------------------------------------------------------
+    // LABEL IMPROVEMENTS (NEW)
+    // ---------------------------------------------------------
+    private readonly List<TextMeshPro> allLabelTmps = new();
+    private Material sharedLabelMaterial;
+
+    // ---------------------------------------------------------
+    // NEW: Cross-floor preview transparency support
+    // ---------------------------------------------------------
+    private bool previewCrossFloorActive = false;
+    private bool previewForcedAllFloors = false;
+    private int previewRestoreFloorIndex = 0;
+    private int previewRestoreDropdownIndex = 1;
+
     // =========================================================
     // STARTUP
     // =========================================================
@@ -156,6 +186,8 @@ public class NavigationController : MonoBehaviour
             Debug.LogError("NavigationController: LineRenderer is NULL.");
             yield break;
         }
+
+        EnsureSharedLabelMaterial();
 
         path = new NavMeshPath();
 
@@ -197,6 +229,25 @@ public class NavigationController : MonoBehaviour
         line.material.mainTextureOffset = new Vector2(textureOffset, 0f);
     }
 
+    void LateUpdate()
+    {
+        if (mainCamera == null) return;
+
+        for (int i = 0; i < allLabelTmps.Count; i++)
+        {
+            var tmp = allLabelTmps[i];
+            if (!tmp) continue;
+            if (!tmp.gameObject.activeInHierarchy) continue;
+
+            float d = Vector3.Distance(mainCamera.position, tmp.transform.position);
+
+            float t = Mathf.InverseLerp(scaleStartDistance, scaleEndDistance, d);
+            float s = Mathf.Lerp(minLabelSize, maxLabelSize, t);
+
+            tmp.transform.localScale = Vector3.one * s;
+        }
+    }
+
     void AutoAssignIfNull()
     {
         if (floorsRoot == null)
@@ -226,13 +277,13 @@ public class NavigationController : MonoBehaviour
         floorLabels.Clear();
         floorNames.Clear();
 
-        // NEW: cache props roots per floor
         floorPropsRoots.Clear();
 
-        // only real points
         allPoints.Clear();
         allPointNames.Clear();
         allPointFloorIndex.Clear();
+
+        allLabelTmps.Clear();
 
         SelectedFrom = -1;
         SelectedTo = -1;
@@ -243,7 +294,6 @@ public class NavigationController : MonoBehaviour
             floors.Add(floor);
             floorNames.Add(floor.name);
 
-            // NEW: cache Props root (can be null if not found)
             Transform propsRoot = floor.Find(propsRootName);
             floorPropsRoots.Add(propsRoot);
 
@@ -300,6 +350,9 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloor(int index)
     {
+        // NEW: lock floor switching while a route is active
+        if (IsRouteActive) return;
+
         if (ShowAllFloors) return;
         if (floors.Count == 0) return;
 
@@ -313,7 +366,6 @@ public class NavigationController : MonoBehaviour
 
         ApplyVisibleFloors();
 
-        // ✅ single floor => ensure transparency off
         ApplyNavTransparency(false);
 
         ActiveFloorChanged?.Invoke();
@@ -322,18 +374,19 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloorFromDropdown(int dropdownIndex)
     {
+        // NEW: lock floor switching while a route is active
+        if (IsRouteActive) return;
+
         dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
         SelectedFloorDropdownIndex = dropdownIndex;
 
         if (dropdownIndex == 0)
         {
-            // ✅ All floors => enable transparency
             SetShowAllFloors(true);
             ApplyNavTransparency(true);
         }
         else
         {
-            // ✅ Single floor => disable transparency
             ApplyNavTransparency(false);
             SetShowAllFloors(false);
             SetFloor(dropdownIndex - 1);
@@ -365,7 +418,6 @@ public class NavigationController : MonoBehaviour
 
         CancelNavigation(false);
 
-        // if user is in all floors mode, keep transparency
         if (ShowAllFloors) ApplyNavTransparency(true);
         else ApplyNavTransparency(false);
 
@@ -405,6 +457,62 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
+    // NEW: cross-floor preview mode (transparent + optional show all)
+    // =========================================================
+    void SetPreviewCrossFloorMode(bool enabled)
+    {
+        if (previewCrossFloorActive == enabled) return;
+        previewCrossFloorActive = enabled;
+
+        if (enabled)
+        {
+            // cross-floor preview => transparent
+            ApplyNavTransparency(true);
+
+            // OPTIONAL: force all floors visible during cross-floor preview
+            if (!ShowAllFloors)
+            {
+                previewForcedAllFloors = true;
+                previewRestoreFloorIndex = ActiveFloorIndex;
+                previewRestoreDropdownIndex = SelectedFloorDropdownIndex;
+
+                ShowAllFloors = true;
+                visibleFloors.Clear();
+                for (int i = 0; i < floors.Count; i++) visibleFloors.Add(i);
+                ApplyVisibleFloors();
+
+                // update dropdown selection to "Tất cả các tầng"
+                SelectedFloorDropdownIndex = 0;
+
+                FloorsChanged?.Invoke();
+                ActiveFloorChanged?.Invoke();
+            }
+        }
+        else
+        {
+            if (previewForcedAllFloors)
+            {
+                previewForcedAllFloors = false;
+
+                ShowAllFloors = false;
+                ActiveFloorIndex = Mathf.Clamp(previewRestoreFloorIndex, 0, floors.Count - 1);
+                visibleFloors.Clear();
+                visibleFloors.Add(ActiveFloorIndex);
+                ApplyVisibleFloors();
+
+                SelectedFloorDropdownIndex = previewRestoreDropdownIndex;
+
+                FloorsChanged?.Invoke();
+                ActiveFloorChanged?.Invoke();
+            }
+
+            // if not actually navigating, restore opacity
+            if (!IsRouteActive)
+                ApplyNavTransparency(false);
+        }
+    }
+
+    // =========================================================
     // PATH PREVIEW + NAVIGATION
     // =========================================================
     public void PreviewPath()
@@ -416,6 +524,7 @@ public class NavigationController : MonoBehaviour
         {
             ClearPath();
             ClearPings();
+            SetPreviewCrossFloorMode(false);
             return;
         }
 
@@ -423,8 +532,13 @@ public class NavigationController : MonoBehaviour
         {
             ClearPath();
             ClearPings();
+            SetPreviewCrossFloorMode(false);
             return;
         }
+
+        // NEW: cross-floor preview => transparent (+ optional show all)
+        bool cross = IsCrossFloorRoute();
+        SetPreviewCrossFloorMode(cross);
 
         Vector3 start = allPoints[SelectedFrom].position;
         Vector3 end = allPoints[SelectedTo].position;
@@ -441,6 +555,7 @@ public class NavigationController : MonoBehaviour
         {
             ClearPath();
             ClearPings();
+            SetPreviewCrossFloorMode(false);
         }
     }
 
@@ -456,7 +571,9 @@ public class NavigationController : MonoBehaviour
         if (SelectedFrom < 0 || SelectedTo < 0) return;
         if (SelectedFrom == SelectedTo) return;
 
-        // route becomes active and stays active after camera finishes, until cancel
+        // NEW: stop preview override fighting navigation mode
+        if (previewCrossFloorActive) SetPreviewCrossFloorMode(false);
+
         IsRouteActive = true;
         NavigationStateChanged?.Invoke(true);
 
@@ -464,7 +581,6 @@ public class NavigationController : MonoBehaviour
         navToFloor = allPointFloorIndex[SelectedTo];
         navIsCrossFloor = IsCrossFloorRoute();
 
-        // ✅ Transparency ON when cross-floor OR show all floors
         if (ShowAllFloors || navIsCrossFloor) ApplyNavTransparency(true);
         else ApplyNavTransparency(false);
 
@@ -511,7 +627,6 @@ public class NavigationController : MonoBehaviour
 
                 isNavigating = false;
 
-                // ✅ if cross-floor => keep both floors visible AND keep transparency
                 if (navIsCrossFloor && navFromFloor >= 0 && navToFloor >= 0)
                 {
                     visibleFloors.Clear();
@@ -523,7 +638,6 @@ public class NavigationController : MonoBehaviour
                 }
                 else
                 {
-                    // ✅ same floor => normal at end
                     ApplyNavTransparency(false);
                 }
             },
@@ -554,7 +668,6 @@ public class NavigationController : MonoBehaviour
 
         ClearPath();
 
-        // ✅ cancel => ALWAYS restore normal
         ApplyNavTransparency(false);
 
         navFromFloor = -1;
@@ -563,6 +676,9 @@ public class NavigationController : MonoBehaviour
 
         IsRouteActive = false;
         NavigationStateChanged?.Invoke(false);
+
+        // NEW: clear preview override before restoring preview
+        SetPreviewCrossFloorMode(false);
 
         if (restorePreview)
             PreviewPath();
@@ -789,6 +905,26 @@ public class NavigationController : MonoBehaviour
     // =========================================================
     // LABELS
     // =========================================================
+    void EnsureSharedLabelMaterial()
+    {
+        if (sharedLabelMaterial != null) return;
+        if (labelFont == null) return;
+
+        sharedLabelMaterial = new Material(labelFont.material);
+        sharedLabelMaterial.name = "SharedLabelMaterial_NavLabels";
+
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, 0.15f);
+
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.12f);
+        sharedLabelMaterial.SetColor(ShaderUtilities.ID_OutlineColor, new Color32(255, 255, 255, 255));
+
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0.6f);
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_UnderlayDilate, 0.15f);
+        sharedLabelMaterial.SetColor(ShaderUtilities.ID_UnderlayColor, new Color32(0, 0, 0, 160));
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, 0.9f);
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, -1.2f);
+    }
+
     GameObject CreateLabel(Transform wp)
     {
         GameObject go = new GameObject("Label_" + wp.name);
@@ -798,9 +934,14 @@ public class NavigationController : MonoBehaviour
         var tmp = go.AddComponent<TextMeshPro>();
         tmp.text = wp.name;
         tmp.font = labelFont;
-        tmp.fontSize = labelSize * 0.6f;
 
-        tmp.color = new Color32(17, 59, 47, 255);
+        EnsureSharedLabelMaterial();
+        if (sharedLabelMaterial != null)
+            tmp.fontSharedMaterial = sharedLabelMaterial;
+
+        tmp.fontSize = labelSize * 0.42f;
+
+        tmp.color = new Color32(0, 255, 0, 255);
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.enableWordWrapping = false;
         tmp.richText = true;
@@ -810,26 +951,16 @@ public class NavigationController : MonoBehaviour
         tmp.fontStyle = FontStyles.Bold;
 
         tmp.enableAutoSizing = true;
-        tmp.fontSizeMin = labelSize * 0.75f;
-        tmp.fontSizeMax = labelSize;
+        tmp.fontSizeMin = labelSize * 0.35f;
+        tmp.fontSizeMax = labelSize * 0.50f;    
 
         tmp.characterSpacing = 1.5f;
         tmp.lineSpacing = -10f;
 
-        tmp.fontMaterial = new Material(tmp.fontSharedMaterial);
-
-        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, 0.15f);
-
-        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.08f);
-        tmp.fontMaterial.SetColor(ShaderUtilities.ID_OutlineColor, new Color32(0, 0, 0, 160));
-
-        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0.6f);
-        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlayDilate, 0.15f);
-        tmp.fontMaterial.SetColor(ShaderUtilities.ID_UnderlayColor, new Color32(0, 0, 0, 160));
-        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, 0.9f);
-        tmp.fontMaterial.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, -1.2f);
-
         go.AddComponent<Billboard>();
+
+        allLabelTmps.Add(tmp);
+
         return go;
     }
 
@@ -880,7 +1011,6 @@ public class NavigationController : MonoBehaviour
         if (bestIndex < 0) return;
         if (ActiveFloorIndex == bestIndex) return;
 
-        // If cross-floor route is active, keep BOTH floors visible.
         if (IsRouteActive && navIsCrossFloor)
         {
             if (isNavigating)
@@ -906,6 +1036,9 @@ public class NavigationController : MonoBehaviour
 
     void SetShowAllFloors(bool enabled)
     {
+        // NEW: lock while route active
+        if (IsRouteActive) return;
+
         ShowAllFloors = enabled;
         visibleFloors.Clear();
 
@@ -914,7 +1047,6 @@ public class NavigationController : MonoBehaviour
             for (int i = 0; i < floors.Count; i++)
                 visibleFloors.Add(i);
 
-            // ✅ All floors => transparent
             ApplyNavTransparency(true);
         }
         else
@@ -922,7 +1054,6 @@ public class NavigationController : MonoBehaviour
             ActiveFloorIndex = Mathf.Clamp(ActiveFloorIndex, 0, floors.Count - 1);
             visibleFloors.Add(ActiveFloorIndex);
 
-            // ✅ Single floor => normal
             ApplyNavTransparency(false);
         }
 
@@ -934,6 +1065,9 @@ public class NavigationController : MonoBehaviour
 
     public void ExitAllFloorsAndFocusFloor(int floorIndex)
     {
+        // NEW: lock while route active
+        if (IsRouteActive) return;
+
         floorIndex = Mathf.Clamp(floorIndex, 0, floors.Count - 1);
 
         if (!ShowAllFloors)
@@ -956,7 +1090,6 @@ public class NavigationController : MonoBehaviour
         FloorsChanged?.Invoke();
         PreviewPath();
 
-        // ✅ If cross-floor route is active => keep transparency, else normal
         if (IsRouteActive && navIsCrossFloor)
             ApplyNavTransparency(true);
         else
@@ -966,7 +1099,6 @@ public class NavigationController : MonoBehaviour
     // =========================================================
     // TRANSPARENCY (PER-MATERIAL CLONE, KEEPS RGB/TEXTURES)
     // =========================================================
-
     bool IsCrossFloorRoute()
     {
         if (SelectedFrom < 0 || SelectedTo < 0) return false;
@@ -978,7 +1110,6 @@ public class NavigationController : MonoBehaviour
         return fromFloor != toFloor;
     }
 
-    // NEW: hide/show props based on whether transparency mode is enabled
     void ApplyPropsVisibility(bool transparentMode)
     {
         if (!hidePropsWhenTransparent) return;
@@ -1010,12 +1141,10 @@ public class NavigationController : MonoBehaviour
                 {
                     if (r == null) continue;
 
-                    // Skip TMP labels to avoid breaking text
                     if (r.GetComponent<TextMeshPro>() != null) continue;
                     if (r.GetComponent<TMP_SubMesh>() != null) continue;
                     if (r.GetComponentInParent<TMP_Text>(true) != null) continue;
 
-                    // Cache originals ONCE per renderer
                     if (!originalMats.ContainsKey(r))
                         originalMats[r] = r.sharedMaterials;
 
@@ -1033,6 +1162,7 @@ public class NavigationController : MonoBehaviour
                             continue;
                         }
 
+                        float a = AlphaFor(r);
                         dst[m] = GetOrCreateTransparentClone(mat, navAlpha);
                     }
 
@@ -1045,7 +1175,6 @@ public class NavigationController : MonoBehaviour
             RestoreOriginalMaterials();
         }
 
-        // NEW: keep props in sync with transparency mode
         ApplyPropsVisibility(enabled);
     }
 
@@ -1064,13 +1193,10 @@ public class NavigationController : MonoBehaviour
         return clone;
     }
 
-    // Make the SAME material transparent (keeps RGB / textures)
-    // Works for URP Lit, URP Unlit, and many ShaderGraph shaders.
     void MakeMaterialTransparentURP(Material mat, float alpha)
     {
         if (mat == null) return;
 
-        // Set alpha on common color properties
         if (mat.HasProperty("_BaseColor"))
         {
             Color c = mat.GetColor("_BaseColor");
@@ -1084,22 +1210,17 @@ public class NavigationController : MonoBehaviour
             mat.SetColor("_Color", c);
         }
 
-        // URP surface switch: 0 = Opaque, 1 = Transparent
         if (mat.HasProperty("_Surface"))
             mat.SetFloat("_Surface", 1f);
 
-        // Render queue + tag
         mat.SetOverrideTag("RenderType", "Transparent");
         mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
 
-        // Blend (if present)
         if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
         if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
 
-        // ZWrite off (if present)
         if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
 
-        // Keywords (safe even if shader ignores them)
         mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         mat.DisableKeyword("_SURFACE_TYPE_OPAQUE");
     }
@@ -1113,9 +1234,20 @@ public class NavigationController : MonoBehaviour
         }
         originalMats.Clear();
 
-        // Optional: destroy clones to avoid memory growth
         foreach (var kv in transparentCloneCache)
             if (kv.Value != null) Destroy(kv.Value);
         transparentCloneCache.Clear();
+    }
+
+    float AlphaFor(Renderer r)
+    {
+        Transform t = r.transform;
+        while (t != null)
+        {
+            if (t.name == floorRootName) return navFloorAlpha;
+            if (t.name == wallRootName) return navWallAlpha;
+            t = t.parent;
+        }
+        return navOtherAlpha;
     }
 }

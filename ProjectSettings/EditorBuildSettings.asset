@@ -8,6 +8,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/NoiTiet_Optimize.unity
     guid: 9d9a65ab64910824fa88fc4691afae62
+  - enabled: 1
+    path: Assets/Scenes/NoiTiet_Overview.unity
+    guid: 2fa70a8418d3be84aa2d2f78d9c8a51b
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

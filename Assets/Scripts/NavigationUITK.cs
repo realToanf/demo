@@ -1,3 +1,4 @@
+// NavigationUITK.cs
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -47,7 +48,6 @@ public class NavigationUITK : MonoBehaviour
             RefreshNavigateButtonState();
         });
 
-        // ✅ Toggle click behavior
         navigateBtn.clicked += OnNavigateButtonClicked;
 
         // controller -> UI
@@ -78,20 +78,30 @@ public class NavigationUITK : MonoBehaviour
             navigateBtn.clicked -= OnNavigateButtonClicked;
     }
 
+    void SetControlsLocked(bool locked)
+    {
+        if (fromDropdown != null)  fromDropdown.SetEnabled(!locked);
+        if (toDropdown != null)    toDropdown.SetEnabled(!locked);
+        if (floorDropdown != null) floorDropdown.SetEnabled(!locked);
+        // If you have more UI controls, disable/enable them here as well.
+    }
+
     void OnNavigateButtonClicked()
     {
         if (nav == null) return;
 
-        // ✅ If route is active (even after camera finished), clicking cancels + resets placeholders
+        // If route is active (even after camera finished), clicking cancels + resets placeholders
         if (nav.IsRouteActive || isNavigating)
         {
             nav.CancelAndResetToPlaceholder();
-            // UI will refresh via SelectionChanged + NavigationStateChanged
             return;
         }
 
-        // ✅ Otherwise: start navigation
+        // Otherwise: start navigation
         nav.StartNavigation();
+
+        // Optional immediate lock (controller will also fire NavigationStateChanged(true))
+        SetControlsLocked(true);
     }
 
     void OnNavigationStateChanged(bool navigating)
@@ -99,8 +109,10 @@ public class NavigationUITK : MonoBehaviour
         isNavigating = navigating;
         if (navigateBtn == null || nav == null) return;
 
-        // ✅ If route active OR currently moving => keep cancel UI
-        if (nav.IsRouteActive || navigating)
+        bool locked = nav.IsRouteActive || navigating;
+        SetControlsLocked(locked);
+
+        if (locked)
         {
             navigateBtn.text = "Hủy chỉ đường";
             navigateBtn.AddToClassList("cancel");
@@ -118,7 +130,6 @@ public class NavigationUITK : MonoBehaviour
     {
         if (navigateBtn == null || nav == null) return;
 
-        // ✅ If route active => always allow cancel
         if (nav.IsRouteActive || isNavigating)
         {
             navigateBtn.SetEnabled(true);
@@ -175,7 +186,7 @@ public class NavigationUITK : MonoBehaviour
         if (nav.SelectedFrom < 0 || nav.SelectedFrom >= points.Count)
         {
             fromDropdown.SetValueWithoutNotify(FROM_PLACEHOLDER);
-            fromDropdown.index = -1; // set AFTER value
+            fromDropdown.index = -1;
         }
         else
         {
@@ -183,16 +194,18 @@ public class NavigationUITK : MonoBehaviour
             fromDropdown.SetValueWithoutNotify(points[nav.SelectedFrom]);
         }
 
+        // TO
         if (nav.SelectedTo < 0 || nav.SelectedTo >= points.Count)
         {
             toDropdown.SetValueWithoutNotify(TO_PLACEHOLDER);
-            toDropdown.index = -1; // set AFTER value
+            toDropdown.index = -1;
         }
         else
         {
             toDropdown.index = nav.SelectedTo;
             toDropdown.SetValueWithoutNotify(points[nav.SelectedTo]);
         }
+
         RefreshNavigateButtonState();
     }
 }

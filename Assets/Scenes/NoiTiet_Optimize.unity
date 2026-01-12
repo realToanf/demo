@@ -3873,6 +3873,11 @@ MonoBehaviour:
   labelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   labelHeight: 1
   labelSize: 8
+  minLabelSize: 0.8
+  maxLabelSize: 2.2
+  sizeAt1Meter: 1.4
+  scaleStartDistance: 2
+  scaleEndDistance: 30
   mainCamera: {fileID: 632689000}
   startPingPrefab: {fileID: 7023937571435195266, guid: 2377d2ba5209cb74a91f1c0f95f8d59a, type: 3}
   endPingPrefab: {fileID: 5022572798917713579, guid: 6d600fd1255087544a6cacb6a651e132, type: 3}
@@ -3938,7 +3943,12 @@ MonoBehaviour:
   enableTextureScroll: 0
   textureScrollSpeed: 1
   makeFloorsTransparentInNav: 1
-  navAlpha: 0.9
+  navAlpha: 0.6
+  navFloorAlpha: 0.22
+  navWallAlpha: 0.75
+  navOtherAlpha: 0.55
+  floorRootName: Floor
+  wallRootName: Wall
   propsRootName: Props
   hidePropsWhenTransparent: 1
   visualsRoot: {fileID: 801480134}
@@ -168579,6 +168589,7 @@ GameObject:
   - component: {fileID: 506348508}
   - component: {fileID: 506348509}
   - component: {fileID: 506348510}
+  - component: {fileID: 506348511}
   m_Layer: 5
   m_Name: NavigationUIDocument
   m_TagString: Untagged
@@ -168638,6 +168649,24 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NavigationUITK
   uiDocument: {fileID: 506348509}
   nav: {fileID: 206206583}
+--- !u!114 &506348511
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 506348507}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9c095b59bd3c484ba7a0e7d9cc9ee0b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ModeAwareNavUI
+  overviewSceneName: NoiTiet_Overview
+  roomToRoomSceneName: NoiTiet_Optimize
+  switchBtnName: modeBtn
+  floorSectionName: floorSection
+  fromLabelName: fromLabel
+  toLabelName: toLabel
 --- !u!1 &510100494
 GameObject:
   m_ObjectHideFlags: 0
