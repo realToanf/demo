@@ -21,6 +21,7 @@ public class CameraController : MonoBehaviour
 
     [Header("Refocus")]
     public Transform refocusPose;
+    public Transform idleSnapTarget;
 
     [Header("BirdEye Settings")]
     public float panSpeed = 5f;
@@ -128,7 +129,7 @@ public class CameraController : MonoBehaviour
         else
         {
             // No input: if idle long enough, instantly re-lock to pivot target
-            if (mode == CameraMode.BirdEye && !pivotLocked && pivotTarget != null)
+            if (mode == CameraMode.BirdEye && !pivotLocked && idleSnapTarget != null)
             {
                 float idleFor = Time.time - lastInputTime;
                 if (idleFor >= relockAfterIdleSeconds)
@@ -170,21 +171,16 @@ public class CameraController : MonoBehaviour
 
     void InstantRelockToPivot()
     {
-        if (pivotTarget == null) return;
+        if (idleSnapTarget == null) return;
 
-        // Recenter pivot to target
-        birdPivot = pivotTarget.position + pivotOffset;
+        birdPivot = idleSnapTarget.position + pivotOffset;
 
-        // "Appropriate point": keep the current orbitOffset (user's last panned offset),
-        // but apply it to the target pivot instantly.
         transform.position = birdPivot + orbitOffset;
         transform.LookAt(birdPivot);
 
         birdDist = orbitOffset.magnitude;
-
         pivotLocked = true;
 
-        // Keep idleSpinWeight at 0; it will ramp in after idleSpinDelay
         idleSpinWeight = 0f;
         EnforceZone();
     }
@@ -591,6 +587,15 @@ public class CameraController : MonoBehaviour
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
 
+        pivotLocked = false;  
+        pivotTarget = null;
+
+        birdPivot = transform.position + Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized * 5f;
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
+
+        lastInputTime = Time.time;
+        idleSpinWeight = 0f;
         moveRoutine = null;
     }
 
@@ -606,8 +611,7 @@ public class CameraController : MonoBehaviour
         if (target == null) return;
 
         mode = CameraMode.BirdEye;
-
-        pivotTarget = target;
+        
         birdPivot = target.position + pivotOffset;
 
         currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
