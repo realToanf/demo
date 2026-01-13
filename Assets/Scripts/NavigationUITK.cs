@@ -121,7 +121,7 @@ public class NavigationUITK : MonoBehaviour
         if (nav == null) return;
 
         // If route is active (even after camera finished), clicking cancels + resets placeholders
-        if (nav.IsRouteActive || isNavigating)
+        if (nav.IsRouteActive)
         {
             nav.CancelAndResetToPlaceholder();
             return;
@@ -130,7 +130,6 @@ public class NavigationUITK : MonoBehaviour
         // Otherwise: start navigation
         nav.StartNavigation();
 
-        // Optional immediate lock (controller will also fire NavigationStateChanged(true))
         SetControlsLocked(true);
     }
 
@@ -139,14 +138,15 @@ public class NavigationUITK : MonoBehaviour
         isNavigating = navigating;
         if (navigateBtn == null || nav == null) return;
 
-        bool locked = nav.IsRouteActive || navigating;
-        SetControlsLocked(locked);
+        // Disable dropdowns ONLY during animation
+        SetControlsLocked(isNavigating);
 
-        if (locked)
+        // Button label depends on route state, not animation state
+        if (nav.IsRouteActive)
         {
             navigateBtn.text = "Hủy chỉ đường";
             navigateBtn.AddToClassList("cancel");
-            navigateBtn.SetEnabled(true);
+            navigateBtn.SetEnabled(true); // always allow cancel when route active
         }
         else
         {
@@ -155,7 +155,6 @@ public class NavigationUITK : MonoBehaviour
             RefreshNavigateButtonState();
         }
 
-        // NEW: navigation state affects refocus as well
         RefreshRefocusButtonState();
     }
 
@@ -163,15 +162,23 @@ public class NavigationUITK : MonoBehaviour
     {
         if (navigateBtn == null || nav == null) return;
 
-        if (nav.IsRouteActive || isNavigating)
+        // If a route is active, button must stay enabled to cancel
+        if (nav.IsRouteActive)
         {
             navigateBtn.SetEnabled(true);
             return;
         }
 
+        // If animating and no route yet, keep disabled (optional)
+        if (isNavigating)
+        {
+            navigateBtn.SetEnabled(false);
+            return;
+        }
+
         bool valid = nav.SelectedFrom >= 0 &&
-                     nav.SelectedTo >= 0 &&
-                     nav.SelectedFrom != nav.SelectedTo;
+                    nav.SelectedTo >= 0 &&
+                    nav.SelectedFrom != nav.SelectedTo;
 
         navigateBtn.SetEnabled(valid);
     }
@@ -188,9 +195,10 @@ public class NavigationUITK : MonoBehaviour
     {
         if (refocusBtn == null) return;
 
-        bool locked = (nav != null) && (nav.IsRouteActive || isNavigating);
-        refocusBtn.SetEnabled(!locked && cam != null);
+        // Only locked during animation
+        refocusBtn.SetEnabled(!isNavigating && cam != null);
     }
+
 
     void RefreshFloors()
     {

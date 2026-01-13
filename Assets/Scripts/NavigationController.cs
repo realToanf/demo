@@ -351,7 +351,7 @@ public class NavigationController : MonoBehaviour
     public void SetFloor(int index)
     {
         // NEW: lock floor switching while a route is active
-        if (IsRouteActive) return;
+        if (isNavigating) return;
 
         if (ShowAllFloors) return;
         if (floors.Count == 0) return;
@@ -375,7 +375,7 @@ public class NavigationController : MonoBehaviour
     public void SetFloorFromDropdown(int dropdownIndex)
     {
         // NEW: lock floor switching while a route is active
-        if (IsRouteActive) return;
+        if (isNavigating) return;
 
         dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
         SelectedFloorDropdownIndex = dropdownIndex;
@@ -414,6 +414,7 @@ public class NavigationController : MonoBehaviour
 
     public void SetFrom(int index)
     {
+        if (isNavigating) return;
         if (allPoints.Count == 0) return;
 
         CancelNavigation(false);
@@ -436,6 +437,7 @@ public class NavigationController : MonoBehaviour
 
     public void SetTo(int index)
     {
+        if (isNavigating) return;
         if (allPoints.Count == 0) return;
 
         CancelNavigation(false);
@@ -626,6 +628,7 @@ public class NavigationController : MonoBehaviour
                 DrawLinePoints(GetPartialPath(navCorners, revealDistance));
 
                 isNavigating = false;
+                NavigationStateChanged?.Invoke(false);
 
                 if (navIsCrossFloor && navFromFloor >= 0 && navToFloor >= 0)
                 {
