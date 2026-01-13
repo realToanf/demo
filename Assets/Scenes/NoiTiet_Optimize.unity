@@ -94,7 +94,7 @@ LightmapSettings:
     m_TrainingDataDestination: TrainingData
     m_LightProbeSampleCountMultiplier: 4
   m_LightingDataAsset: {fileID: 20201, guid: 0000000000000000f000000000000000, type: 0}
-  m_LightingSettings: {fileID: 0}
+  m_LightingSettings: {fileID: 4890085278179872738, guid: d8852a96ec79f034280d31fd187d43f8, type: 2}
 --- !u!196 &4
 NavMeshSettings:
   serializedVersion: 2
@@ -171414,7 +171414,7 @@ Transform:
   m_GameObject: {fileID: 632688999}
   serializedVersion: 2
   m_LocalRotation: {x: 0.3650999, y: -0, z: -0, w: 0.93096834}
-  m_LocalPosition: {x: 22.157318, y: 37.13, z: -91.36}
+  m_LocalPosition: {x: 22.157318, y: 24.8, z: -107.6}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -171552,6 +171552,14 @@ MonoBehaviour:
   touchPanMultiplier: 10
   touchZoomSensitivity: 0.036
   gestureThreshold: 5
+  enableIdleSpin: 1
+  idleDelay: 2
+  idleSpinSpeed: 8
+  idleSpinRamp: 3
+  pivotTarget: {fileID: 2113349064}
+  pivotOffset: {x: 0, y: 0, z: 0}
+  lockPivotToTarget: 1
+  disablePanWhenLocked: 1
 --- !u!135 &632689005
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -172339,13 +172347,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 658185759}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.1746806, y: -0.60131574, z: 0.7624303, w: 0.16311376}
-  m_LocalPosition: {x: 17.4, y: 59.22, z: -48}
+  m_LocalRotation: {x: -0.13801269, y: 0.43438438, z: -0.8684417, w: -0.19512007}
+  m_LocalPosition: {x: 17.4, y: 53.6, z: -88.4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 103.117004, y: -161.982, z: -9.806}
+  m_LocalEulerAnglesHint: {x: 413.93298, y: 6.848, z: -1281.838}
 --- !u!1001 &659949900
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -208933,6 +208941,55 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: e78bc92d32079154aafa629bbd155df4, type: 3}
+--- !u!1 &1270107431
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1270107433}
+  - component: {fileID: 1270107432}
+  m_Layer: 0
+  m_Name: Global Volume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1270107432
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270107431}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 0
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 5f6df30df7bd74e4a8efd49d8f38c5e7, type: 2}
+--- !u!4 &1270107433
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270107431}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 47.74788, y: -34.817093, z: 32.73964}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1281423241
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -344543,6 +344600,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 6b726f13e3ba51342ba325f307475899, type: 3}
   m_PrefabInstance: {fileID: 2113156723}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &2113349063
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2113349064}
+  m_Layer: 0
+  m_Name: SpinPivot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2113349064
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2113349063}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 29.1, y: 4.14, z: -38.8}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &2113510380
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -345405,3 +345493,5 @@ SceneRoots:
   - {fileID: 2110044428}
   - {fileID: 801480134}
   - {fileID: 728582934}
+  - {fileID: 1270107433}
+  - {fileID: 2113349064}

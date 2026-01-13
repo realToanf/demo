@@ -27,19 +27,42 @@ public class CameraController : MonoBehaviour
     public float heightSmoothSpeed = 5f;
 
     [Header("Touch Settings")]
-    public float touchPanMultiplier = 10f; // Multiplier for touch pan sensitivity
-    public float touchZoomSensitivity = 0.036f; // Sensitivity for pinch zoom
-    public float gestureThreshold = 5f; // Minimum pixel movement to detect gesture
+    public float touchPanMultiplier = 10f;
+    public float touchZoomSensitivity = 0.036f;
+    public float gestureThreshold = 5f;
+
+    [Header("Pivot Target (Drag & Drop)")]
+    public Transform pivotTarget;              // drag & drop
+    public Vector3 pivotOffset = Vector3.zero; // optional
+
+    [Header("Idle / Lock Behavior")]
+    public float relockAfterIdleSeconds = 5f;  // after user stops interacting, lock back to pivot
+    public bool enableIdleSpin = true;
+    public float idleSpinDelay = 0.5f;         // after locked, how long before spin starts
+    public float idleSpinSpeed = 8.0f;         // degrees/sec
+    public float idleSpinRamp = 3.0f;          // blend in/out speed
 
     bool lockCamera = false;
 
     float yaw;
     float pitch;
+
     float currentPitch = 45f;
+
+    // Orbit state
     Vector3 birdPivot;
+    float birdDist = 20f;
+    Vector3 orbitOffset;
+
+    // Idle state
+    float lastInputTime;
+    float idleSpinWeight;
+
+    // Pivot lock state
+    bool pivotLocked = false;
 
     float lastTouchDist;
-    Vector2 lastTwoFingerCenter; // Track center point of two-finger gesture
+    Vector2 lastTwoFingerCenter;
 
     Coroutine moveRoutine;
     UnityEngine.AI.NavMeshPath path;
@@ -54,22 +77,164 @@ public class CameraController : MonoBehaviour
     {
         yaw = transform.eulerAngles.y;
         pitch = transform.eulerAngles.x;
-        birdPivot = transform.position + transform.forward * 5f;
+
+        if (pivotTarget != null)
+        {
+            birdPivot = pivotTarget.position + pivotOffset;
+            pivotLocked = true;
+        }
+        else
+        {
+            birdPivot = transform.position + transform.forward * 5f;
+            pivotLocked = false;
+        }
+
+        birdDist = Vector3.Distance(transform.position, birdPivot);
+        orbitOffset = transform.position - birdPivot;
+
+        lastInputTime = Time.time;
+        idleSpinWeight = 0f;
     }
 
     void Update()
     {
-        if(lockCamera) return;
+        if (lockCamera) return;
+
+        bool inputThisFrame = HasAnyInputThisFrame();
 
         if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
         {
-            Debug.Log("Toggle mode");
             ToggleMode();
+            inputThisFrame = true;
         }
 
-        TouchControl();
+        if (inputThisFrame)
+        {
+            lastInputTime = Time.time;
 
+            // Any interaction releases from pivot lock immediately
+            if (mode == CameraMode.BirdEye && pivotLocked)
+                ReleaseFromPivot();
+        }
+        else
+        {
+            // No input: if idle long enough, instantly re-lock to pivot target
+            if (mode == CameraMode.BirdEye && !pivotLocked && pivotTarget != null)
+            {
+                float idleFor = Time.time - lastInputTime;
+                if (idleFor >= relockAfterIdleSeconds)
+                    InstantRelockToPivot();
+            }
+        }
+
+        // While locked, keep following pivot target
+        if (mode == CameraMode.BirdEye && pivotLocked && pivotTarget != null)
+        {
+            birdPivot = pivotTarget.position + pivotOffset;
+            transform.position = birdPivot + orbitOffset;
+            transform.LookAt(birdPivot);
+
+            birdDist = orbitOffset.magnitude;
+        }
+
+        // Controls
+        TouchControl();
         MouseKeyboardControl();
+
+        // Idle spin only when locked
+        ApplyIdleSpin();
+    }
+
+    // ================= LOCK / RELOCK =================
+    void ReleaseFromPivot()
+    {
+        pivotLocked = false;
+
+        birdDist = Vector3.Distance(transform.position, birdPivot);
+        orbitOffset = transform.position - birdPivot;
+
+        // Stop spin immediately
+        idleSpinWeight = 0f;
+    }
+
+    void InstantRelockToPivot()
+    {
+        if (pivotTarget == null) return;
+
+        // Recenter pivot to target
+        birdPivot = pivotTarget.position + pivotOffset;
+
+        // "Appropriate point": keep the current orbitOffset (user's last panned offset),
+        // but apply it to the target pivot instantly.
+        transform.position = birdPivot + orbitOffset;
+        transform.LookAt(birdPivot);
+
+        birdDist = orbitOffset.magnitude;
+
+        pivotLocked = true;
+
+        // Keep idleSpinWeight at 0; it will ramp in after idleSpinDelay
+        idleSpinWeight = 0f;
+    }
+    // =================================================
+
+    bool HasAnyInputThisFrame()
+    {
+        var kb = Keyboard.current;
+        var mouse = Mouse.current;
+        var ts = Touchscreen.current;
+
+        if (kb != null)
+        {
+            if (kb.wKey.isPressed || kb.aKey.isPressed || kb.sKey.isPressed || kb.dKey.isPressed) return true;
+            if (kb.tabKey.wasPressedThisFrame) return true;
+        }
+
+        if (mouse != null)
+        {
+            if (mouse.leftButton.isPressed || mouse.rightButton.isPressed) return true;
+            if (Mathf.Abs(mouse.scroll.ReadValue().y) > 0.01f) return true;
+        }
+
+        if (ts != null)
+        {
+            var touches = ts.touches;
+            for (int i = 0; i < touches.Count; i++)
+            {
+                if (!touches[i].isInProgress) continue;
+                var ph = touches[i].phase.ReadValue();
+                if (ph == UnityEngine.InputSystem.TouchPhase.Began ||
+                    ph == UnityEngine.InputSystem.TouchPhase.Moved ||
+                    ph == UnityEngine.InputSystem.TouchPhase.Stationary)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    void ApplyIdleSpin()
+    {
+        if (!enableIdleSpin) return;
+        if (lockCamera) return;
+        if (mode != CameraMode.BirdEye) return;
+        if (!pivotLocked) return;
+
+        float idleFor = Time.time - lastInputTime;
+        bool shouldSpin = idleFor >= (relockAfterIdleSeconds + idleSpinDelay);
+
+        float target = shouldSpin ? 1f : 0f;
+        idleSpinWeight = Mathf.MoveTowards(idleSpinWeight, target, idleSpinRamp * Time.deltaTime);
+
+        if (idleSpinWeight <= 0f) return;
+
+        float angle = idleSpinSpeed * idleSpinWeight * Time.deltaTime;
+
+        transform.RotateAround(birdPivot, Vector3.up, angle);
+        transform.LookAt(birdPivot);
+
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
     }
 
     // ================= MODE =================
@@ -79,8 +244,30 @@ public class CameraController : MonoBehaviour
 
         if (mode == CameraMode.BirdEye)
         {
-            birdPivot = transform.position + transform.forward * 5f;
+            if (pivotTarget != null)
+            {
+                birdPivot = pivotTarget.position + pivotOffset;
+                pivotLocked = true;
+            }
+            else
+            {
+                birdPivot = transform.position + transform.forward * 5f;
+                pivotLocked = false;
+            }
+
+            birdDist = Vector3.Distance(transform.position, birdPivot);
+            orbitOffset = transform.position - birdPivot;
+
             transform.LookAt(birdPivot);
+
+            lastInputTime = Time.time;
+            idleSpinWeight = 0f;
+        }
+        else
+        {
+            // Leaving BirdEye
+            pivotLocked = false;
+            idleSpinWeight = 0f;
         }
     }
 
@@ -114,7 +301,7 @@ public class CameraController : MonoBehaviour
         {
             Vector2 delta = mouse.delta.ReadValue() * Time.deltaTime;
 
-            // PAN
+            // PAN (unlocked only; first interaction releases)
             if (mouse.leftButton.isPressed)
             {
                 Vector3 right = transform.right;
@@ -122,7 +309,13 @@ public class CameraController : MonoBehaviour
 
                 Vector3 move = (-right * delta.x - forward * delta.y) * panSpeed;
                 transform.position += move;
-                birdPivot += move;
+
+                // While unlocked, move pivot with camera for consistent orbit center feel
+                if (!pivotLocked)
+                    birdPivot += move;
+
+                orbitOffset = transform.position - birdPivot;
+                birdDist = orbitOffset.magnitude;
             }
 
             // ROTATE
@@ -143,12 +336,13 @@ public class CameraController : MonoBehaviour
                 Vector3 dir = transform.forward;
                 Vector3 newPos = transform.position + dir * scroll * zoomSpeed;
 
-                float height = newPos.y;
-                if (height >= minHeight && height <= maxHeight)
+                float h = newPos.y;
+                if (h >= minHeight && h <= maxHeight)
                 {
                     transform.position = newPos;
-                    // Cập nhật birdPivot sau khi zoom để tránh camera nhảy lên cao khi xoay
-                    birdPivot = transform.position + transform.forward * Vector3.Distance(transform.position, birdPivot);
+
+                    orbitOffset = transform.position - birdPivot;
+                    birdDist = orbitOffset.magnitude;
                 }
             }
         }
@@ -164,44 +358,29 @@ public class CameraController : MonoBehaviour
 
         var touches = ts.touches;
 
-        // Count active touches
         int activeTouchCount = 0;
         for (int i = 0; i < touches.Count; i++)
-        {
-            if (touches[i].isInProgress)
-                activeTouchCount++;
-        }
+            if (touches[i].isInProgress) activeTouchCount++;
 
-        // ========================================
-        // 1️⃣ ONE FINGER - ROTATE CAMERA
-        // ========================================
+        // 1) ONE FINGER ROTATE
         if (activeTouchCount == 1)
         {
-            // Find the active touch
             var touch = touches[0].isInProgress ? touches[0] : touches[1];
-            
-            // Only process if touch is actively moving
+
             if (touch.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Moved)
             {
-                Vector2 delta = touch.delta.ReadValue();
-                
-                // Ignore very small movements (noise filtering)
-                if (delta.magnitude < 0.1f) return;
+                Vector2 d = touch.delta.ReadValue();
+                if (d.magnitude < 0.1f) return;
 
-                // Horizontal rotation (yaw) around birdPivot
-                transform.RotateAround(birdPivot, Vector3.up, delta.x * rotateSpeed * Time.deltaTime);
+                transform.RotateAround(birdPivot, Vector3.up, d.x * rotateSpeed * Time.deltaTime);
 
-                // Vertical rotation (pitch)
-                currentPitch -= delta.y * rotateSpeed * Time.deltaTime;
+                currentPitch -= d.y * rotateSpeed * Time.deltaTime;
                 currentPitch = Mathf.Clamp(currentPitch, minPitch, maxPitch);
 
                 UpdateBirdCamera();
             }
         }
-
-        // ========================================
-        // 2️⃣ TWO FINGERS - PAN + PINCH ZOOM
-        // ========================================
+        // 2) TWO FINGERS PAN + PINCH
         else if (activeTouchCount >= 2)
         {
             var touch0 = touches[0];
@@ -212,46 +391,34 @@ public class CameraController : MonoBehaviour
             Vector2 currentCenter = (p0 + p1) * 0.5f;
             float currentDist = Vector2.Distance(p0, p1);
 
-            // Initialize on first frame of two-finger gesture
             if (lastTouchDist <= 0)
             {
                 lastTouchDist = currentDist;
                 lastTwoFingerCenter = currentCenter;
-                return; // Skip first frame to avoid jumps
+                return;
             }
 
-            // ========================================
-            // PINCH ZOOM (based on distance change)
-            // ========================================
+            // PINCH ZOOM
             float distChange = currentDist - lastTouchDist;
-            
-            // Only zoom if distance change is significant
             if (Mathf.Abs(distChange) > gestureThreshold)
             {
                 Vector3 zoomDir = transform.forward;
                 Vector3 newPos = transform.position + zoomDir * distChange * touchZoomSensitivity;
-                
-                // Clamp height
+
                 if (newPos.y >= minHeight && newPos.y <= maxHeight)
                 {
                     transform.position = newPos;
-                    
-                    // Update birdPivot to maintain rotation center
-                    float pivotDist = Vector3.Distance(transform.position, birdPivot);
-                    birdPivot = transform.position + transform.forward * pivotDist;
+
+                    orbitOffset = transform.position - birdPivot;
+                    birdDist = orbitOffset.magnitude;
                 }
             }
 
-            // ========================================
-            // PAN (based on center movement)
-            // ========================================
-            // Only pan if both touches are actively moving
+            // PAN
             if (touch0.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Moved ||
                 touch1.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Moved)
             {
                 Vector2 centerDelta = currentCenter - lastTwoFingerCenter;
-                
-                // Only pan if movement is significant
                 if (centerDelta.magnitude > 0.5f)
                 {
                     Vector3 right = transform.right;
@@ -259,21 +426,20 @@ public class CameraController : MonoBehaviour
 
                     Vector3 move = (-right * centerDelta.x - forward * centerDelta.y) * touchPanMultiplier * Time.deltaTime;
                     transform.position += move;
-                    birdPivot += move;
+
+                    if (!pivotLocked)
+                        birdPivot += move;
+
+                    orbitOffset = transform.position - birdPivot;
+                    birdDist = orbitOffset.magnitude;
                 }
             }
 
-            // Update state for next frame
             lastTouchDist = currentDist;
             lastTwoFingerCenter = currentCenter;
         }
-
-        // ========================================
-        // 3️⃣ RESET STATE when fingers lifted
-        // ========================================
         else
         {
-            // Reset two-finger gesture state
             if (lastTouchDist > 0)
             {
                 lastTouchDist = 0;
@@ -284,10 +450,14 @@ public class CameraController : MonoBehaviour
 
     void UpdateBirdCamera()
     {
-        float dist = Vector3.Distance(transform.position, birdPivot);
+        birdDist = Vector3.Distance(transform.position, birdPivot);
+
         Quaternion rot = Quaternion.Euler(currentPitch, transform.eulerAngles.y, 0);
-        transform.position = birdPivot + rot * Vector3.back * dist;
+        transform.position = birdPivot + rot * Vector3.back * birdDist;
         transform.LookAt(birdPivot);
+
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
     }
 
     public void MoveBirdEyeFromTo(
@@ -296,14 +466,14 @@ public class CameraController : MonoBehaviour
         Action onComplete = null,
         Action<Vector3> onStep = null
     )
-    {   
+    {
         if (from == null || to == null) return;
 
         if (moveRoutine != null)
             CancelMove();
 
         Vector3 start = ProjectToNavMesh(from.position);
-        Vector3 end   = ProjectToNavMesh(to.position);
+        Vector3 end = ProjectToNavMesh(to.position);
 
         if (!UnityEngine.AI.NavMesh.CalculatePath(start, end, UnityEngine.AI.NavMesh.AllAreas, path))
         {
@@ -311,9 +481,7 @@ public class CameraController : MonoBehaviour
             return;
         }
 
-        moveRoutine = StartCoroutine(
-            MoveRoutine(path.corners, onComplete, onStep)
-        );
+        moveRoutine = StartCoroutine(MoveRoutine(path.corners, onComplete, onStep));
     }
 
     public void CancelMove()
@@ -328,8 +496,11 @@ public class CameraController : MonoBehaviour
 
         lastTouchDist = 0;
         lastTwoFingerCenter = Vector2.zero;
+
+        lastInputTime = Time.time;
+        idleSpinWeight = 0f;
     }
-    // =================================================
+
     IEnumerator MoveRoutine(
         Vector3[] corners,
         Action onComplete,
@@ -338,10 +509,6 @@ public class CameraController : MonoBehaviour
     {
         lockCamera = true;
 
-        // lưu trạng thái ban đầu
-        Vector3 originPos = transform.position;
-        Quaternion originRot = transform.rotation;
-
         if (corners.Length < 2)
         {
             lockCamera = false;
@@ -349,48 +516,30 @@ public class CameraController : MonoBehaviour
             yield break;
         }
 
-        // ======================
-        // 1️⃣ BAY LÊN CAO
-        // ======================
         Vector3 liftTarget = corners[0] + Vector3.up * (height * 0.3f);
         Quaternion topDownRot = Quaternion.Euler(90f, 0f, 0f);
 
         while (Vector3.Distance(transform.position, liftTarget) > 0.05f)
         {
-            transform.position = Vector3.MoveTowards(
-                transform.position,
-                liftTarget,
-                moveSpeed * Time.deltaTime
-            );
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                topDownRot,
-                rotateSpeed * Time.deltaTime
-            );
+            transform.position = Vector3.MoveTowards(transform.position, liftTarget, moveSpeed * Time.deltaTime);
+            transform.rotation = Quaternion.Slerp(transform.rotation, topDownRot, rotateSpeed * Time.deltaTime);
             yield return null;
         }
 
-        // ======================
-        // 2️⃣ DI CHUYỂN THEO PATH
-        // ======================
         for (int i = 1; i < corners.Length; i++)
         {
             Vector3 target = corners[i];
 
             while (Vector3.Distance(new Vector2(transform.position.x, transform.position.z),
-           new Vector2(target.x, target.z)) > 0.05f)
+                   new Vector2(target.x, target.z)) > 0.05f)
             {
-                // move XZ toward target
                 Vector3 desiredPos = Vector3.MoveTowards(
                     transform.position,
                     new Vector3(target.x, transform.position.y, target.z),
                     (moveSpeed * 0.6f) * Time.deltaTime
                 );
 
-                // compute desired Y based on target.y + offset
                 float desiredY = target.y + followHeightOffset;
-
-                // smooth Y
                 float newY = Mathf.Lerp(transform.position.y, desiredY, (heightSmoothSpeed * 0.6f) * Time.deltaTime);
 
                 transform.position = new Vector3(desiredPos.x, newY, desiredPos.z);
@@ -400,49 +549,32 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        // ======================
-        // 3️⃣ VIEW TỔNG QUAN (CHÉO)
-        // ======================
         Vector3 startPoint = corners[0];
-        Vector3 endPoint   = corners[corners.Length - 1];
-
-        // điểm giữa
+        Vector3 endPoint = corners[corners.Length - 1];
         Vector3 center = (startPoint + endPoint) * 0.5f;
 
-        // hướng từ start → end (ĐỔI TÊN)
         Vector3 pathDir = (endPoint - startPoint).normalized;
 
-        // offset chéo
-        Vector3 overviewOffset =
-            -pathDir * 10f +
-            Vector3.up * (height * 0.6f);
-
+        Vector3 overviewOffset = -pathDir * 10f + Vector3.up * (height * 0.6f);
         Vector3 overviewPos = center + overviewOffset;
 
-        Quaternion overviewRot = Quaternion.LookRotation(
-            center - overviewPos,
-            Vector3.up
-        );
+        Quaternion overviewRot = Quaternion.LookRotation(center - overviewPos, Vector3.up);
 
         while (Vector3.Distance(transform.position, overviewPos) > 0.05f)
         {
-            transform.position = Vector3.MoveTowards(
-                transform.position,
-                overviewPos,
-                (moveSpeed * 0.6f) * Time.deltaTime
-            );
-
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                overviewRot,
-                rotateSpeed * Time.deltaTime
-            );
-
+            transform.position = Vector3.MoveTowards(transform.position, overviewPos, (moveSpeed * 0.6f) * Time.deltaTime);
+            transform.rotation = Quaternion.Slerp(transform.rotation, overviewRot, rotateSpeed * Time.deltaTime);
             yield return null;
         }
 
         onComplete?.Invoke();
         lockCamera = false;
+
+        lastInputTime = Time.time;
+        idleSpinWeight = 0f;
+
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
 
         moveRoutine = null;
     }
@@ -456,21 +588,27 @@ public class CameraController : MonoBehaviour
 
     public void SnapToBirdEye(Transform target, float snapHeight = 40f, float pitch = 75f)
     {
-        if (target == null)
-        {
-            return;
-        }
+        if (target == null) return;
 
         mode = CameraMode.BirdEye;
 
-        birdPivot = target.position;
-
-        float yaw = transform.eulerAngles.y;
+        pivotTarget = target;
+        birdPivot = target.position + pivotOffset;
 
         currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
-        Quaternion rot = Quaternion.Euler(currentPitch, yaw, 0f);
-        transform.position = birdPivot + rot * Vector3.back * snapHeight;
+        float y = transform.eulerAngles.y;
+        Quaternion rot = Quaternion.Euler(currentPitch, y, 0f);
+
+        birdDist = snapHeight;
+        transform.position = birdPivot + rot * Vector3.back * birdDist;
         transform.LookAt(birdPivot);
+
+        orbitOffset = transform.position - birdPivot;
+
+        pivotLocked = true;
+
+        lastInputTime = Time.time;
+        idleSpinWeight = 0f;
     }
 }

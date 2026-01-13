@@ -180556,7 +180556,7 @@ MonoBehaviour:
   floorsRoot: {fileID: 0}
   line: {fileID: 999340913}
   lineMaterial: {fileID: 2100000, guid: 618631a466cbeff489b0a012a86f37b6, type: 2}
-  labelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  labelFont: {fileID: 11400000, guid: 275ea02c7f5457040b67df423398bf78, type: 2}
   labelHeight: 1
   labelSize: 8
   minLabelSize: 0.8
@@ -180630,6 +180630,11 @@ MonoBehaviour:
   textureScrollSpeed: 1
   makeFloorsTransparentInNav: 1
   navAlpha: 0.9
+  navFloorAlpha: 0.22
+  navWallAlpha: 0.45
+  navOtherAlpha: 0.55
+  floorRootName: Floor
+  wallRootName: Wall
   propsRootName: Props
   hidePropsWhenTransparent: 1
   visualsRoot: {fileID: 0}
