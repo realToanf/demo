@@ -10612,6 +10612,7 @@ MonoBehaviour:
   labelFont: {fileID: 11400000, guid: 275ea02c7f5457040b67df423398bf78, type: 2}
   labelHeight: 1
   labelSize: 8
+  labelLayerName: WaypointLabels
   minLabelSize: 0.8
   maxLabelSize: 8
   sizeAt1Meter: 1.4
@@ -13338,7 +13339,7 @@ Camera:
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 255
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0

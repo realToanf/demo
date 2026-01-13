@@ -20,6 +20,9 @@ public class NavigationController : MonoBehaviour
     public float labelHeight = 1f;
     public float labelSize = 8f;
 
+    [Header("Waypoint Labels Layer")]
+    public string labelLayerName = "WaypointLabels";
+
     [Header("Label Scaling")]
     public float minLabelSize = 0.8f;
     public float maxLabelSize = 2.2f;
@@ -933,6 +936,9 @@ public class NavigationController : MonoBehaviour
         GameObject go = new GameObject("Label_" + wp.name);
         go.transform.SetParent(wp);
         go.transform.localPosition = Vector3.up * labelHeight;
+
+        int labelLayer = LayerMask.NameToLayer(labelLayerName);
+        if (labelLayer != -1) go.layer = labelLayer;
 
         var tmp = go.AddComponent<TextMeshPro>();
         tmp.text = wp.name;
