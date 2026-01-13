@@ -579,9 +579,6 @@ public class NavigationController : MonoBehaviour
         // NEW: stop preview override fighting navigation mode
         if (previewCrossFloorActive) SetPreviewCrossFloorMode(false);
 
-        IsRouteActive = true;
-        NavigationStateChanged?.Invoke(true);
-
         navFromFloor = allPointFloorIndex[SelectedFrom];
         navToFloor = allPointFloorIndex[SelectedTo];
         navIsCrossFloor = IsCrossFloorRoute();
@@ -590,6 +587,9 @@ public class NavigationController : MonoBehaviour
         else ApplyNavTransparency(false);
 
         ExitAllFloorsAndFocusFloor(navFromFloor);
+
+        IsRouteActive = true;
+        NavigationStateChanged?.Invoke(true);
 
         SpawnPings();
 
@@ -641,10 +641,6 @@ public class NavigationController : MonoBehaviour
                     ApplyVisibleFloors();
 
                     ApplyNavTransparency(true);
-                }
-                else
-                {
-                    ApplyNavTransparency(false);
                 }
             },
             pos =>
@@ -1172,7 +1168,7 @@ public class NavigationController : MonoBehaviour
                         }
 
                         float a = AlphaFor(r);
-                        dst[m] = GetOrCreateTransparentClone(mat, navAlpha);
+                        dst[m] = GetOrCreateTransparentClone(mat, a);
                     }
 
                     r.sharedMaterials = dst;
