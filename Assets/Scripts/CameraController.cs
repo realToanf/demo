@@ -22,6 +22,7 @@ public class CameraController : MonoBehaviour
     [Header("Refocus")]
     public Transform refocusPose;
     public Transform idleSnapTarget;
+    public Transform refocusLookTarget;
 
     [Header("BirdEye Settings")]
     public float panSpeed = 5f;
@@ -129,7 +130,7 @@ public class CameraController : MonoBehaviour
         else
         {
             // No input: if idle long enough, instantly re-lock to pivot target
-            if (mode == CameraMode.BirdEye && !pivotLocked && idleSnapTarget != null)
+            if (mode == CameraMode.BirdEye && !pivotLocked && pivotTarget != null)
             {
                 float idleFor = Time.time - lastInputTime;
                 if (idleFor >= relockAfterIdleSeconds)
@@ -171,16 +172,17 @@ public class CameraController : MonoBehaviour
 
     void InstantRelockToPivot()
     {
-        if (idleSnapTarget == null) return;
+        if (pivotTarget == null) return;
 
-        birdPivot = idleSnapTarget.position + pivotOffset;
+        birdPivot = pivotTarget.position + pivotOffset;
 
-        transform.position = birdPivot + orbitOffset;
+        // capture current orbit relative to the pivot
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
+
         transform.LookAt(birdPivot);
 
-        birdDist = orbitOffset.magnitude;
         pivotLocked = true;
-
         idleSpinWeight = 0f;
         EnforceZone();
     }
@@ -319,10 +321,7 @@ public class CameraController : MonoBehaviour
 
                 Vector3 move = (-right * delta.x - forward * delta.y) * panSpeed;
                 transform.position += move;
-
-                // While unlocked, move pivot with camera for consistent orbit center feel
-                if (!pivotLocked)
-                    birdPivot += move;
+                birdPivot += move;  
 
                 orbitOffset = transform.position - birdPivot;
                 birdDist = orbitOffset.magnitude;
@@ -436,9 +435,7 @@ public class CameraController : MonoBehaviour
 
                     Vector3 move = (-right * centerDelta.x - forward * centerDelta.y) * touchPanMultiplier * Time.deltaTime;
                     transform.position += move;
-
-                    if (!pivotLocked)
-                        birdPivot += move;
+                    birdPivot += move;  
 
                     orbitOffset = transform.position - birdPivot;
                     birdDist = orbitOffset.magnitude;
@@ -584,13 +581,10 @@ public class CameraController : MonoBehaviour
         lastInputTime = Time.time;
         idleSpinWeight = 0f;
 
-        orbitOffset = transform.position - birdPivot;
-        birdDist = orbitOffset.magnitude;
+        pivotLocked = false;
+        if (pivotTarget != null)
+            birdPivot = pivotTarget.position + pivotOffset;
 
-        pivotLocked = false;  
-        pivotTarget = null;
-
-        birdPivot = transform.position + Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized * 5f;
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
 
@@ -687,30 +681,27 @@ public class CameraController : MonoBehaviour
     public void RefocusNow()
     {
         if (refocusPose == null) return;
-        if (moveRoutine != null)
-            CancelMove();
+        if (moveRoutine != null) CancelMove();
 
         mode = CameraMode.BirdEye;
         lockCamera = false;
-        pivotLocked = false;
 
         transform.position = refocusPose.position;
 
-        if (pivotTarget != null)
-            birdPivot = pivotTarget.position + pivotOffset;
+        Vector3 lookPoint =
+            (refocusLookTarget != null) ? (refocusLookTarget.position + pivotOffset) :
+            (idleSnapTarget != null) ? (idleSnapTarget.position + pivotOffset) :
+            birdPivot;
 
-        if (clampPivotToZone)
-            birdPivot = ClampToZone(birdPivot);
+        transform.LookAt(lookPoint);
 
-        transform.LookAt(birdPivot);
-
+        // keep orbit state coherent after refocus
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
 
         yaw = transform.eulerAngles.y;
         pitch = transform.eulerAngles.x;
         currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
-        EnforceZone();
 
         lastInputTime = Time.time;
         idleSpinWeight = 0f;

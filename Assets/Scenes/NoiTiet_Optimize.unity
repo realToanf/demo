@@ -3564,6 +3564,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 6b726f13e3ba51342ba325f307475899, type: 3}
   m_PrefabInstance: {fileID: 181833093}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &181978603
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 181978604}
+  m_Layer: 0
+  m_Name: RefocusLookTarget
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &181978604
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 181978603}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 29.1, y: 4.14, z: -38.8}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &191643435
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -171546,6 +171577,7 @@ MonoBehaviour:
   clampHeightToZone: 1
   refocusPose: {fileID: 1233187844}
   idleSnapTarget: {fileID: 1579760997}
+  refocusLookTarget: {fileID: 181978604}
   panSpeed: 5
   rotateSpeed: 15
   zoomSpeed: 1
@@ -345618,5 +345650,6 @@ SceneRoots:
   - {fileID: 1270107433}
   - {fileID: 2113349064}
   - {fileID: 1579760997}
+  - {fileID: 181978604}
   - {fileID: 1828306560}
   - {fileID: 1233187844}
