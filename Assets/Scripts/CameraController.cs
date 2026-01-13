@@ -19,6 +19,9 @@ public class CameraController : MonoBehaviour
     public bool clampPivotToZone = true;    
     public bool clampHeightToZone = true;   
 
+    [Header("Refocus")]
+    public Transform refocusPose;
+
     [Header("BirdEye Settings")]
     public float panSpeed = 5f;
     public float rotateSpeed = 15f;
@@ -183,6 +186,7 @@ public class CameraController : MonoBehaviour
 
         // Keep idleSpinWeight at 0; it will ramp in after idleSpinDelay
         idleSpinWeight = 0f;
+        EnforceZone();
     }
     // =================================================
 
@@ -468,6 +472,7 @@ public class CameraController : MonoBehaviour
 
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
+        EnforceZone();
     }
 
     public void MoveBirdEyeFromTo(
@@ -673,5 +678,37 @@ public class CameraController : MonoBehaviour
             // Keep looking at pivot
             transform.LookAt(birdPivot);
         }
+    }
+
+    public void RefocusNow()
+    {
+        if (refocusPose == null) return;
+        if (moveRoutine != null)
+            CancelMove();
+
+        mode = CameraMode.BirdEye;
+        lockCamera = false;
+        pivotLocked = false;
+
+        transform.position = refocusPose.position;
+
+        if (pivotTarget != null)
+            birdPivot = pivotTarget.position + pivotOffset;
+
+        if (clampPivotToZone)
+            birdPivot = ClampToZone(birdPivot);
+
+        transform.LookAt(birdPivot);
+
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
+
+        yaw = transform.eulerAngles.y;
+        pitch = transform.eulerAngles.x;
+        currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        EnforceZone();
+
+        lastInputTime = Time.time;
+        idleSpinWeight = 0f;
     }
 }

@@ -8,10 +8,16 @@ public class NavigationUITK : MonoBehaviour
     public UIDocument uiDocument;
     public NavigationController nav;
 
+    [Header("Optional: Refocus Button -> CameraController")]
+    public CameraController cam; 
+
     DropdownField fromDropdown;
     DropdownField toDropdown;
     DropdownField floorDropdown;
     Button navigateBtn;
+
+    // NEW
+    Button refocusBtn;
 
     bool isNavigating = false;
 
@@ -26,6 +32,9 @@ public class NavigationUITK : MonoBehaviour
         toDropdown    = root.Q<DropdownField>("toDropdown");
         floorDropdown = root.Q<DropdownField>("floorDropdown");
         navigateBtn   = root.Q<Button>("navigateBtn");
+
+        // NEW
+        refocusBtn    = root.Q<Button>("refocusBtn");
 
         if (fromDropdown == null || toDropdown == null || floorDropdown == null || navigateBtn == null)
         {
@@ -50,6 +59,10 @@ public class NavigationUITK : MonoBehaviour
 
         navigateBtn.clicked += OnNavigateButtonClicked;
 
+        // NEW
+        if (refocusBtn != null)
+            refocusBtn.clicked += OnRefocusClicked;
+
         // controller -> UI
         nav.FloorsChanged += RefreshFloors;
         nav.ActiveFloorChanged += RefreshActiveFloor;
@@ -63,6 +76,9 @@ public class NavigationUITK : MonoBehaviour
         // initial state
         OnNavigationStateChanged(false);
         RefreshNavigateButtonState();
+
+        // NEW: set initial refocus button state
+        RefreshRefocusButtonState();
     }
 
     void OnDisable()
@@ -76,6 +92,16 @@ public class NavigationUITK : MonoBehaviour
 
         if (navigateBtn != null)
             navigateBtn.clicked -= OnNavigateButtonClicked;
+
+        // NEW
+        if (refocusBtn != null)
+            refocusBtn.clicked -= OnRefocusClicked;
+    }
+
+    void Update()
+    {
+        // NEW: keep refocus availability updated
+        RefreshRefocusButtonState();
     }
 
     void SetControlsLocked(bool locked)
@@ -84,6 +110,10 @@ public class NavigationUITK : MonoBehaviour
         if (toDropdown != null)    toDropdown.SetEnabled(!locked);
         if (floorDropdown != null) floorDropdown.SetEnabled(!locked);
         // If you have more UI controls, disable/enable them here as well.
+
+        // NEW: refocus should also respect lock state
+        if (refocusBtn != null)
+            refocusBtn.SetEnabled(!locked);
     }
 
     void OnNavigateButtonClicked()
@@ -124,6 +154,9 @@ public class NavigationUITK : MonoBehaviour
             navigateBtn.RemoveFromClassList("cancel");
             RefreshNavigateButtonState();
         }
+
+        // NEW: navigation state affects refocus as well
+        RefreshRefocusButtonState();
     }
 
     void RefreshNavigateButtonState()
@@ -141,6 +174,22 @@ public class NavigationUITK : MonoBehaviour
                      nav.SelectedFrom != nav.SelectedTo;
 
         navigateBtn.SetEnabled(valid);
+    }
+
+    // NEW
+    void OnRefocusClicked()
+    {
+        if (cam == null) return;
+        cam.RefocusNow();
+    }
+
+    // NEW
+    void RefreshRefocusButtonState()
+    {
+        if (refocusBtn == null) return;
+
+        bool locked = (nav != null) && (nav.IsRouteActive || isNavigating);
+        refocusBtn.SetEnabled(!locked && cam != null);
     }
 
     void RefreshFloors()
@@ -179,6 +228,7 @@ public class NavigationUITK : MonoBehaviour
             toDropdown.SetValueWithoutNotify(TO_PLACEHOLDER);
 
             RefreshNavigateButtonState();
+            RefreshRefocusButtonState();
             return;
         }
 
@@ -207,5 +257,6 @@ public class NavigationUITK : MonoBehaviour
         }
 
         RefreshNavigateButtonState();
+        RefreshRefocusButtonState();
     }
 }

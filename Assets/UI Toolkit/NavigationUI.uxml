@@ -33,7 +33,7 @@
             </ui:VisualElement>
 
             <ui:Button name="modeBtn" text="Chuyển chế độ" class="modeBtn" />
-                
+            <ui:Button name="refocusBtn" text="Refocus" class="refocus" />
 
         </ui:VisualElement>
     </ui:VisualElement>
