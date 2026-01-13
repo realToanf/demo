@@ -13,6 +13,12 @@ public class CameraController : MonoBehaviour
     public float fpsMoveSpeed = 7.5f;
     public float fpsLookSpeed = 6f;
 
+    [Header("Camera Zone Limits")]
+    public BoxCollider cameraZone;        
+    public float zonePadding = 0.0f;   
+    public bool clampPivotToZone = true;    
+    public bool clampHeightToZone = true;   
+
     [Header("BirdEye Settings")]
     public float panSpeed = 5f;
     public float rotateSpeed = 15f;
@@ -141,6 +147,8 @@ public class CameraController : MonoBehaviour
         TouchControl();
         MouseKeyboardControl();
 
+        EnforceZone();
+
         // Idle spin only when locked
         ApplyIdleSpin();
     }
@@ -235,6 +243,8 @@ public class CameraController : MonoBehaviour
 
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
+
+        EnforceZone();
     }
 
     // ================= MODE =================
@@ -610,5 +620,58 @@ public class CameraController : MonoBehaviour
 
         lastInputTime = Time.time;
         idleSpinWeight = 0f;
+    }
+
+    Vector3 ClampToZone(Vector3 worldPos)
+    {
+        if (cameraZone == null) return worldPos;
+
+        // Work in collider local space so rotation/scale of the zone is supported
+        Transform zt = cameraZone.transform;
+
+        Vector3 local = zt.InverseTransformPoint(worldPos);
+        Vector3 c = cameraZone.center;
+        Vector3 e = cameraZone.size * 0.5f;
+
+        float pad = zonePadding;
+
+        float minX = c.x - e.x + pad;
+        float maxX = c.x + e.x - pad;
+        float minY = c.y - e.y + pad;
+        float maxY = c.y + e.y - pad;
+        float minZ = c.z - e.z + pad;
+        float maxZ = c.z + e.z - pad;
+
+        local.x = Mathf.Clamp(local.x, minX, maxX);
+        local.z = Mathf.Clamp(local.z, minZ, maxZ);
+
+        if (clampHeightToZone)
+            local.y = Mathf.Clamp(local.y, minY, maxY);
+
+        return zt.TransformPoint(local);
+    }
+
+    void EnforceZone()
+    {
+        if (cameraZone == null) return;
+        if (mode != CameraMode.BirdEye) return;
+
+        // Clamp pivot first (optional)
+        if (clampPivotToZone)
+            birdPivot = ClampToZone(birdPivot);
+
+        // Clamp camera position
+        Vector3 clampedPos = ClampToZone(transform.position);
+        if (clampedPos != transform.position)
+        {
+            transform.position = clampedPos;
+
+            // Rebuild orbit values so the camera continues smoothly
+            orbitOffset = transform.position - birdPivot;
+            birdDist = orbitOffset.magnitude;
+
+            // Keep looking at pivot
+            transform.LookAt(birdPivot);
+        }
     }
 }

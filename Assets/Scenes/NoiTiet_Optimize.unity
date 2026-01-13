@@ -171538,6 +171538,10 @@ MonoBehaviour:
   mode: 1
   fpsMoveSpeed: 7.5
   fpsLookSpeed: 6
+  cameraZone: {fileID: 1828306559}
+  zonePadding: 0
+  clampPivotToZone: 1
+  clampHeightToZone: 1
   panSpeed: 5
   rotateSpeed: 15
   zoomSpeed: 1
@@ -171552,14 +171556,13 @@ MonoBehaviour:
   touchPanMultiplier: 10
   touchZoomSensitivity: 0.036
   gestureThreshold: 5
-  enableIdleSpin: 1
-  idleDelay: 2
-  idleSpinSpeed: 8
-  idleSpinRamp: 3
   pivotTarget: {fileID: 2113349064}
   pivotOffset: {x: 0, y: 0, z: 0}
-  lockPivotToTarget: 1
-  disablePanWhenLocked: 1
+  relockAfterIdleSeconds: 5
+  enableIdleSpin: 1
+  idleSpinDelay: 0.5
+  idleSpinSpeed: 8
+  idleSpinRamp: 3
 --- !u!135 &632689005
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -223503,6 +223506,59 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 95576352259152251, guid: 9324ca188c4e0e342ab5b660d7cca8ee, type: 3}
   m_PrefabInstance: {fileID: 620679468}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1828306558
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1828306560}
+  - component: {fileID: 1828306559}
+  m_Layer: 0
+  m_Name: CamZone
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!65 &1828306559
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1828306558}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1, y: 1, z: 1}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!4 &1828306560
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1828306558}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 33.2, y: 41.9, z: -52.4}
+  m_LocalScale: {x: 211.56232, y: 66.47358, z: 184.70631}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1836347856
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -345495,3 +345551,4 @@ SceneRoots:
   - {fileID: 728582934}
   - {fileID: 1270107433}
   - {fileID: 2113349064}
+  - {fileID: 1828306560}
