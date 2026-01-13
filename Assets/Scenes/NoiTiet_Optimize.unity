@@ -3870,11 +3870,11 @@ MonoBehaviour:
   floorsRoot: {fileID: 1063523419}
   line: {fileID: 2063593328}
   lineMaterial: {fileID: 2100000, guid: 618631a466cbeff489b0a012a86f37b6, type: 2}
-  labelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  labelFont: {fileID: 11400000, guid: 275ea02c7f5457040b67df423398bf78, type: 2}
   labelHeight: 1
   labelSize: 8
   minLabelSize: 0.8
-  maxLabelSize: 2.2
+  maxLabelSize: 3
   sizeAt1Meter: 1.4
   scaleStartDistance: 2
   scaleEndDistance: 30

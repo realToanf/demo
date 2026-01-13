@@ -913,9 +913,9 @@ public class NavigationController : MonoBehaviour
         sharedLabelMaterial = new Material(labelFont.material);
         sharedLabelMaterial.name = "SharedLabelMaterial_NavLabels";
 
-        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, 0.15f);
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_FaceDilate, 0.06f);
 
-        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.12f);
+        sharedLabelMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.15f);
         sharedLabelMaterial.SetColor(ShaderUtilities.ID_OutlineColor, new Color32(255, 255, 255, 255));
 
         sharedLabelMaterial.SetFloat(ShaderUtilities.ID_UnderlaySoftness, 0.6f);
@@ -941,7 +941,7 @@ public class NavigationController : MonoBehaviour
 
         tmp.fontSize = labelSize * 0.42f;
 
-        tmp.color = new Color32(0, 255, 0, 255);
+        tmp.color = new Color32(46, 150, 50, 255);
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.enableWordWrapping = false;
         tmp.richText = true;
@@ -950,11 +950,11 @@ public class NavigationController : MonoBehaviour
         tmp.enableKerning = true;
         tmp.fontStyle = FontStyles.Bold;
 
-        tmp.enableAutoSizing = true;
+        tmp.enableAutoSizing = false;
         tmp.fontSizeMin = labelSize * 0.35f;
         tmp.fontSizeMax = labelSize * 0.50f;    
 
-        tmp.characterSpacing = 1.5f;
+        tmp.characterSpacing = 0f;
         tmp.lineSpacing = -10f;
 
         go.AddComponent<Billboard>();
