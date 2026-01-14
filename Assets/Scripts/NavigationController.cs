@@ -150,13 +150,13 @@ public class NavigationController : MonoBehaviour
     public Transform visualsRoot;
 
     // ---------------------------------------------------------
-    // LABEL IMPROVEMENTS (NEW)
+    // LABEL IMPROVEMENTS
     // ---------------------------------------------------------
     private readonly List<TextMeshPro> allLabelTmps = new();
     private Material sharedLabelMaterial;
 
     // ---------------------------------------------------------
-    // NEW: Cross-floor preview transparency support
+    // Cross-floor preview transparency support
     // ---------------------------------------------------------
     private bool previewCrossFloorActive = false;
     private bool previewForcedAllFloors = false;
@@ -380,7 +380,6 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloorFromDropdown(int dropdownIndex)
     {
-        // NEW: lock floor switching while a route is active
         if (IsRouteActive || isNavigating) return;
 
         dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
@@ -388,12 +387,11 @@ public class NavigationController : MonoBehaviour
 
         if (dropdownIndex == 0)
         {
+            // Show all floors, BUT NO transparency
             SetShowAllFloors(true);
-            ApplyNavTransparency(true);
         }
         else
         {
-            ApplyNavTransparency(false);
             SetShowAllFloors(false);
             SetFloor(dropdownIndex - 1);
         }
@@ -1048,7 +1046,6 @@ public class NavigationController : MonoBehaviour
 
     void SetShowAllFloors(bool enabled)
     {
-        // NEW: lock while route active
         if (IsRouteActive) return;
 
         ShowAllFloors = enabled;
@@ -1058,15 +1055,11 @@ public class NavigationController : MonoBehaviour
         {
             for (int i = 0; i < floors.Count; i++)
                 visibleFloors.Add(i);
-
-            ApplyNavTransparency(true);
         }
         else
         {
             ActiveFloorIndex = Mathf.Clamp(ActiveFloorIndex, 0, floors.Count - 1);
             visibleFloors.Add(ActiveFloorIndex);
-
-            ApplyNavTransparency(false);
         }
 
         ApplyVisibleFloors();
