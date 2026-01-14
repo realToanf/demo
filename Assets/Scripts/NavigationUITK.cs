@@ -24,25 +24,88 @@ public class NavigationUITK : MonoBehaviour
     const string FROM_PLACEHOLDER = "Chọn điểm bắt đầu";
     const string TO_PLACEHOLDER   = "Chọn điểm đến";
 
-    void OnEnable()
+    VisualElement cardHeader;
+    VisualElement cardContent;
+    Label chevron;
+    bool isCollapsed = false;
+
+    void Start()
     {
-        var root = uiDocument.rootVisualElement;
-
-        fromDropdown  = root.Q<DropdownField>("fromDropdown");
-        toDropdown    = root.Q<DropdownField>("toDropdown");
-        floorDropdown = root.Q<DropdownField>("floorDropdown");
-        navigateBtn   = root.Q<Button>("navigateBtn");
-
-        // NEW
-        refocusBtn    = root.Q<Button>("refocusBtn");
-
-        if (fromDropdown == null || toDropdown == null || floorDropdown == null || navigateBtn == null)
+        if (uiDocument == null)
         {
-            Debug.LogError("NavigationUITK: Missing UXML elements. Check your name= fields.");
+            Debug.LogError("NavigationUITK: uiDocument is NOT assigned in the inspector.");
             return;
         }
 
-        // UI -> controller
+        var root = uiDocument.rootVisualElement;
+        if (root == null)
+        {
+            Debug.LogError("NavigationUITK: rootVisualElement is null.");
+            return;
+        }
+
+        Debug.Log($"NavigationUITK: root child count = {root.childCount}");
+
+        // Dump all named elements so we see what exists
+        foreach (var e in root.Query<VisualElement>().ToList())
+        {
+            if (!string.IsNullOrEmpty(e.name))
+                Debug.Log($"UI element: name={e.name}, type={e.GetType().Name}");
+        }
+
+        // --- scope everything under navCard ---
+        var card = root.Q<VisualElement>("navCard");
+        if (card == null)
+        {
+            Debug.LogError("NavigationUITK: navCard not found in visual tree.");
+            return;
+        }
+
+        cardHeader  = card.Q<VisualElement>("cardHeader");
+        cardContent = card.Q<VisualElement>("cardContent");
+        chevron     = card.Q<Label>("chevron");
+
+        if (cardHeader != null && cardContent != null)
+        {
+            SetCollapsed(false);
+
+            cardHeader.RegisterCallback<ClickEvent>(_ =>
+            {
+                Debug.Log("NavigationUITK: cardHeader clicked");
+                SetCollapsed(!isCollapsed);
+            });
+        }
+        else
+        {
+            Debug.LogWarning(
+                $"NavigationUITK: header found = {cardHeader != null}, content found = {cardContent != null}"
+            );
+        }
+
+        fromDropdown  = card.Q<DropdownField>("fromDropdown");
+        toDropdown    = card.Q<DropdownField>("toDropdown");
+        floorDropdown = card.Q<DropdownField>("floorDropdown");
+        navigateBtn   = card.Q<Button>("navigateBtn");
+        refocusBtn    = card.Q<Button>("refocusBtn");
+
+        Debug.Log(
+            $"NavigationUITK: from={fromDropdown != null}, " +
+            $"to={toDropdown != null}, " +
+            $"floor={floorDropdown != null}, " +
+            $"navBtn={navigateBtn != null}, " +
+            $"refocus={refocusBtn != null}"
+        );
+
+        if (fromDropdown == null || toDropdown == null || floorDropdown == null || navigateBtn == null)
+        {
+            if (fromDropdown == null)  Debug.LogError("NavigationUITK: Missing fromDropdown");
+            if (toDropdown == null)    Debug.LogError("NavigationUITK: Missing toDropdown");
+            if (floorDropdown == null) Debug.LogError("NavigationUITK: Missing floorDropdown");
+            if (navigateBtn == null)   Debug.LogError("NavigationUITK: Missing navigateBtn");
+            return;
+        }
+
+        // --- UI -> controller ---
         floorDropdown.RegisterValueChangedCallback(_ => nav.SetFloorFromDropdown(floorDropdown.index));
 
         fromDropdown.RegisterValueChangedCallback(_ =>
@@ -59,11 +122,10 @@ public class NavigationUITK : MonoBehaviour
 
         navigateBtn.clicked += OnNavigateButtonClicked;
 
-        // NEW
         if (refocusBtn != null)
             refocusBtn.clicked += OnRefocusClicked;
 
-        // controller -> UI
+        // --- controller -> UI ---
         nav.FloorsChanged += RefreshFloors;
         nav.ActiveFloorChanged += RefreshActiveFloor;
         nav.SelectionChanged += RefreshSelections;
@@ -73,13 +135,11 @@ public class NavigationUITK : MonoBehaviour
         RefreshActiveFloor();
         RefreshSelections();
 
-        // initial state
         OnNavigationStateChanged(false);
         RefreshNavigateButtonState();
-
-        // NEW: set initial refocus button state
         RefreshRefocusButtonState();
     }
+
 
     void OnDisable()
     {
@@ -266,5 +326,19 @@ public class NavigationUITK : MonoBehaviour
 
         RefreshNavigateButtonState();
         RefreshRefocusButtonState();
+    }
+    
+    void SetCollapsed(bool collapsed)
+    {
+        isCollapsed = collapsed;
+
+        if (cardContent != null)
+        {
+            cardContent.style.display = isCollapsed ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+        if (chevron != null)
+        {
+            chevron.text = collapsed ? "▸" : "▾";
+        }
     }
 }

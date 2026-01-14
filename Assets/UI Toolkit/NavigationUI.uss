@@ -145,3 +145,15 @@
 .modeBtn:hover, .refocus:hover {
     background-color: rgb(31,41,55);
 }
+
+/* Chevron button */
+.header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.chevron {
+    unity-text-align: middle-right;
+}
