@@ -8,6 +8,16 @@ public class CameraController : MonoBehaviour
 {
     public enum CameraMode { FPS, BirdEye }
     public CameraMode mode = CameraMode.BirdEye;
+    public Camera cam;
+    public LayerMask occluderMask;
+
+    [Header("Overview Settings")]
+    public float overviewPitch = 65f;
+    public float overviewYaw = 45f;
+    public float boundsPadding = 1.2f;
+    public float minHeightAboveRoute = 2f;
+    public int maxOcclusionAdjustSteps = 8;
+    public float occlusionHeightStep = 2f;
 
     [Header("FPS Settings")]
     public float fpsMoveSpeed = 7.5f;
@@ -557,21 +567,24 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        Vector3 startPoint = corners[0];
-        Vector3 endPoint = corners[corners.Length - 1];
-        Vector3 center = (startPoint + endPoint) * 0.5f;
+        Vector3 startPos = transform.position;
+        Quaternion startRot = transform.rotation;
 
-        Vector3 pathDir = (endPoint - startPoint).normalized;
+        PositionSmartOverview(corners);
+        Vector3 targetPos = transform.position;
+        Quaternion targetRot = transform.rotation;
 
-        Vector3 overviewOffset = -pathDir * 10f + Vector3.up * (height * 0.6f);
-        Vector3 overviewPos = center + overviewOffset;
-
-        Quaternion overviewRot = Quaternion.LookRotation(center - overviewPos, Vector3.up);
-
-        while (Vector3.Distance(transform.position, overviewPos) > 0.05f)
+        startPos = transform.position;
+        startRot = transform.rotation;
+        float t = 0f;
+        while (t < 1f)
         {
-            transform.position = Vector3.MoveTowards(transform.position, overviewPos, (moveSpeed * 0.6f) * Time.deltaTime);
-            transform.rotation = Quaternion.Slerp(transform.rotation, overviewRot, rotateSpeed * Time.deltaTime);
+            t += Time.deltaTime * (moveSpeed * 0.5f);
+            float a = Mathf.Clamp01(t);
+
+            transform.position = Vector3.Lerp(startPos, targetPos, a);
+            transform.rotation = Quaternion.Slerp(startRot, targetRot, a);
+
             yield return null;
         }
 
@@ -705,5 +718,156 @@ public class CameraController : MonoBehaviour
 
         lastInputTime = Time.time;
         idleSpinWeight = 0f;
+    }
+
+    void PositionSmartOverview(Vector3[] corners)
+    {
+        if (cam == null) cam = GetComponent<Camera>();
+        if (cam == null) return;
+        if (corners == null || corners.Length == 0) return;
+
+        // 1) Bounds around the route
+        Bounds b = new Bounds(corners[0], Vector3.zero);
+        for (int i = 1; i < corners.Length; i++)
+            b.Encapsulate(corners[i]);
+
+        Vector3 ext = b.extents * boundsPadding;
+
+        // 2) Required height to fit route in FOV
+        float vertFovRad  = cam.fieldOfView * Mathf.Deg2Rad;
+        float horizFovRad = 2f * Mathf.Atan(Mathf.Tan(vertFovRad * 0.5f) * cam.aspect);
+
+        float halfWidth = ext.x;
+        float halfDepth = ext.z;
+
+        float heightFromDepth = halfDepth / Mathf.Tan(vertFovRad * 0.5f);
+        float heightFromWidth = halfWidth / Mathf.Tan(horizFovRad * 0.5f);
+
+        float baseHeight = Mathf.Max(heightFromDepth, heightFromWidth, minHeightAboveRoute);
+
+        Vector3 center = b.center;
+
+        // 3) Place camera at pitched overview
+        float clampedPitch = Mathf.Clamp(overviewPitch, 1f, 89f);
+        float pitchRad = clampedPitch * Mathf.Deg2Rad;
+
+        Quaternion yawRot = Quaternion.Euler(0f, overviewYaw, 0f);
+        Vector3 forwardDir = yawRot * Vector3.forward;
+
+        float camDistance    = baseHeight / Mathf.Sin(pitchRad);
+        float horizontalDist = camDistance * Mathf.Cos(pitchRad);
+        float verticalOffset = camDistance * Mathf.Sin(pitchRad);
+
+        Vector3 camPos = center - forwardDir * horizontalDist + Vector3.up * verticalOffset;
+        Quaternion camRot = Quaternion.LookRotation(center - camPos, Vector3.up);
+
+        transform.position = camPos;
+        transform.rotation = camRot;
+
+        // 4) Occlusion correction (lift if walls block the route)
+        for (int step = 0; step < maxOcclusionAdjustSteps; step++)
+        {
+            if (!IsRouteOccluded(corners))
+                break;
+
+            camPos += Vector3.up * occlusionHeightStep;
+            transform.position = camPos;
+            transform.rotation = Quaternion.LookRotation(center - camPos, Vector3.up);
+        }
+
+        // If still occluded, try rotating around the route
+        if (IsRouteOccluded(corners))
+        {
+            float[] yawOffsets = { 45f, -45f, 90f, -90f, 135f, -135f };
+
+            bool foundAngle = false;
+
+            foreach (float offset in yawOffsets)
+            {
+                float newYaw = overviewYaw + offset;
+                Quaternion yawRot2 = Quaternion.Euler(0f, newYaw, 0f);
+                Vector3 newForward = yawRot2 * Vector3.forward;
+
+                Vector3 newCamPos =
+                    center - newForward * horizontalDist +
+                    Vector3.up * verticalOffset;
+
+                transform.position = newCamPos;
+                transform.rotation = Quaternion.LookRotation(center - newCamPos, Vector3.up);
+
+                if (!IsRouteOccluded(corners))
+                {
+                    foundAngle = true;
+                    break;
+                }
+            }
+
+            // Final fallback: pure top-down
+            if (!foundAngle)
+            {
+                Vector3 topPos = center + Vector3.up * (baseHeight * 2f);
+                transform.position = topPos;
+                transform.rotation = Quaternion.Euler(89f, 0f, 0f);
+            }
+        }
+        
+        // keep bird-eye orbit in sync
+        birdPivot = center;
+        orbitOffset = transform.position - birdPivot;
+        birdDist = orbitOffset.magnitude;
+    }
+
+    bool IsRouteOccluded(Vector3[] corners)
+    {
+        if (cam == null) cam = GetComponent<Camera>();
+        if (cam == null) return false;
+        if (corners == null || corners.Length == 0) return false;
+
+        Vector3 camPos = transform.position;
+
+        const int samplesPerSegment = 2;
+
+        for (int i = 0; i < corners.Length; i++)
+        {
+            // Direct point
+            Vector3 p = corners[i] + Vector3.up * 0.2f;
+            if (IsPointOccluded(camPos, p))
+                return true;
+
+            // Midpoints between segments
+            if (i > 0)
+            {
+                Vector3 a = corners[i - 1];
+                Vector3 b = corners[i];
+
+                for (int s = 1; s <= samplesPerSegment; s++)
+                {
+                    float t = s / (float)(samplesPerSegment + 1);
+                    Vector3 mid = Vector3.Lerp(a, b, t) + Vector3.up * 0.2f;
+
+                    if (IsPointOccluded(camPos, mid))
+                        return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool IsPointOccluded(Vector3 camPos, Vector3 worldPoint)
+    {
+        Vector3 dir = worldPoint - camPos;
+        float dist = dir.magnitude;
+        if (dist < 0.1f) return false;
+
+        dir /= dist;
+
+        if (Physics.Raycast(camPos, dir, out RaycastHit hit, dist, occluderMask, QueryTriggerInteraction.Ignore))
+        {
+            // hit something in occluderMask before the route point
+            return true;
+        }
+
+        return false;
     }
 }

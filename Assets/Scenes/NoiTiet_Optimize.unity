@@ -171569,6 +171569,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   mode: 1
+  cam: {fileID: 632689003}
+  occluderMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  overviewPitch: 65
+  overviewYaw: 45
+  boundsPadding: 1.2
+  minHeightAboveRoute: 2
+  maxOcclusionAdjustSteps: 8
+  occlusionHeightStep: 2
   fpsMoveSpeed: 7.5
   fpsLookSpeed: 6
   cameraZone: {fileID: 1828306559}

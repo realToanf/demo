@@ -5698,7 +5698,7 @@ Transform:
   m_GameObject: {fileID: 1001678214}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 50.92, y: 0.68, z: -35.58}
+  m_LocalPosition: {x: 50.92, y: 0.38799998, z: -35.58}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -10732,7 +10732,7 @@ Transform:
   m_GameObject: {fileID: 1104034163}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 38.659, y: 0.923, z: -37.477}
+  m_LocalPosition: {x: 38.92, y: 0.6309999, z: -35.88}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -11055,7 +11055,7 @@ Transform:
   m_GameObject: {fileID: 1182911303}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 27.6, y: 0.702, z: -73.5}
+  m_LocalPosition: {x: 29.13, y: 0.41, z: -73.2}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -12506,6 +12506,37 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 478606, guid: a9cc5585b9634a9449920c03ec6bc243, type: 3}
   m_PrefabInstance: {fileID: 1814937483}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1457047274
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1457047275}
+  m_Layer: 0
+  m_Name: RefocusLookTarget
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1457047275
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1457047274}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 27.1, y: 3.22, z: -42.3}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1471486122
 GameObject:
   m_ObjectHideFlags: 0
@@ -13247,6 +13278,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   mode: 1
+  cam: {fileID: 1571339744}
+  occluderMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  overviewPitch: 65
+  overviewYaw: 45
+  boundsPadding: 1.2
+  minHeightAboveRoute: 2
+  maxOcclusionAdjustSteps: 8
+  occlusionHeightStep: 2
   fpsMoveSpeed: 7.5
   fpsLookSpeed: 6
   cameraZone: {fileID: 1212140255}
@@ -13255,7 +13296,7 @@ MonoBehaviour:
   clampHeightToZone: 1
   refocusPose: {fileID: 1767138364}
   idleSnapTarget: {fileID: 1980557823}
-  refocusLookTarget: {fileID: 0}
+  refocusLookTarget: {fileID: 1457047275}
   panSpeed: 5
   rotateSpeed: 15
   zoomSpeed: 1
@@ -172435,6 +172476,7 @@ SceneRoots:
   - {fileID: 2042407146}
   - {fileID: 1708817627}
   - {fileID: 1980557823}
+  - {fileID: 1457047275}
   - {fileID: 1212140256}
   - {fileID: 353286516}
   - {fileID: 1767138364}

@@ -355,14 +355,16 @@ public class NavigationController : MonoBehaviour
     {
         // NEW: lock floor switching while a route is active
         if (isNavigating) return;
-
-        if (ShowAllFloors) return;
+        
         if (floors.Count == 0) return;
+        ShowAllFloors = false;
 
         index = Mathf.Clamp(index, 0, floors.Count - 1);
         if (ActiveFloorIndex == index && visibleFloors.Contains(index)) return;
 
         ActiveFloorIndex = index;
+
+        SelectedFloorDropdownIndex = ActiveFloorIndex + 1;
 
         visibleFloors.Clear();
         visibleFloors.Add(index);
@@ -372,13 +374,14 @@ public class NavigationController : MonoBehaviour
         ApplyNavTransparency(false);
 
         ActiveFloorChanged?.Invoke();
+        FloorsChanged?.Invoke();
         PreviewPath();
     }
 
     public void SetFloorFromDropdown(int dropdownIndex)
     {
         // NEW: lock floor switching while a route is active
-        if (isNavigating) return;
+        if (IsRouteActive || isNavigating) return;
 
         dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
         SelectedFloorDropdownIndex = dropdownIndex;
@@ -1021,17 +1024,21 @@ public class NavigationController : MonoBehaviour
             if (isNavigating)
             {
                 ActiveFloorIndex = bestIndex;
+                SelectedFloorDropdownIndex = bestIndex + 1;
 
                 visibleFloors.Clear();
                 visibleFloors.Add(bestIndex);
 
                 ApplyVisibleFloors();
                 ActiveFloorChanged?.Invoke();
+                FloorsChanged?.Invoke();
             }
             else
             {
                 ActiveFloorIndex = bestIndex;
+                SelectedFloorDropdownIndex = bestIndex + 1;
                 ActiveFloorChanged?.Invoke();
+                FloorsChanged?.Invoke();
             }
             return;
         }
