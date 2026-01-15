@@ -2,13 +2,13 @@
     <!-- HUD + TopBar styles -->
     <ui:Style src="project://database/Assets/UI Toolkit/Hud.uss" />
 
-    <!-- Your existing card styles -->
+    <!-- Card styles -->
     <ui:Style src="project://database/Assets/UI Toolkit/NavigationUI.uss?fileID=7433441132597879392&amp;guid=7bb56356fbf6e144aa85a6694b08e62c&amp;type=3#NavigationUI"/>
 
     <ui:VisualElement class="hud">
 
         <!-- TOP BAR -->
-        <ui:VisualElement class="topbar">
+        <ui:VisualElement class="topbar" name="topbar">
             <ui:VisualElement class="topbar__side">
                 <ui:VisualElement class="logo logo--left" name="logoLeft" />
             </ui:VisualElement>
@@ -25,8 +25,6 @@
 
         <!-- CONTENT AREA (everything below the bar) -->
         <ui:VisualElement class="content">
-
-            <!-- ✅ Your existing card root goes here -->
             <ui:VisualElement class="root">
                 <ui:VisualElement class="card" name="navCard">
                     <ui:VisualElement class="header" name="cardHeader">

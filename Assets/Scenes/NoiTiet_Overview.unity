@@ -2265,55 +2265,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 352767952}
   m_Mesh: {fileID: 6856768601106367328, guid: 599f17c76fa548f47a70557ea6f2e228, type: 3}
---- !u!1 &353286514
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 353286516}
-  - component: {fileID: 353286515}
-  m_Layer: 0
-  m_Name: Global Volume
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &353286515
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 353286514}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
-  m_IsGlobal: 1
-  priority: 0
-  blendDistance: 0
-  weight: 1
-  sharedProfile: {fileID: 11400000, guid: 5f6df30df7bd74e4a8efd49d8f38c5e7, type: 2}
---- !u!4 &353286516
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 353286514}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 47.74788, y: -34.817093, z: 32.73964}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &354967848
 GameObject:
   m_ObjectHideFlags: 0
@@ -4258,6 +4209,55 @@ MonoBehaviour:
   m_Center: {x: 0, y: 1, z: 0}
   m_Area: 1
   m_AffectedAgents: ffffffff
+--- !u!1 &664112623
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 664112625}
+  - component: {fileID: 664112624}
+  m_Layer: 0
+  m_Name: Global Volume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &664112624
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 664112623}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 0
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 5f6df30df7bd74e4a8efd49d8f38c5e7, type: 2}
+--- !u!4 &664112625
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 664112623}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 47.74788, y: -34.817093, z: 32.73964}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &666322924
 GameObject:
   m_ObjectHideFlags: 0
@@ -11744,6 +11744,7 @@ MonoBehaviour:
   uiDocument: {fileID: 1334748858}
   nav: {fileID: 1088694256}
   cam: {fileID: 1571339740}
+  logPicked: 0
 --- !u!114 &1334748858
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -12933,6 +12934,7 @@ MonoBehaviour:
   zonePadding: 0
   clampPivotToZone: 1
   clampHeightToZone: 1
+  blockInputByUI: 0
   refocusPose: {fileID: 1767138364}
   idleSnapTarget: {fileID: 1980557823}
   refocusLookTarget: {fileID: 1457047275}
@@ -12952,6 +12954,9 @@ MonoBehaviour:
   gestureThreshold: 5
   pivotTarget: {fileID: 1708817627}
   pivotOffset: {x: 0, y: 0, z: 0}
+  infraRoot: {fileID: 603212327}
+  showroomLockPivotToInfra: 1
+  showroomAllowPan: 1
   relockAfterIdleSeconds: 5
   enableIdleSpin: 1
   idleSpinDelay: 0.5
@@ -171979,5 +171984,5 @@ SceneRoots:
   - {fileID: 1980557823}
   - {fileID: 1457047275}
   - {fileID: 1212140256}
-  - {fileID: 353286516}
   - {fileID: 1767138364}
+  - {fileID: 664112625}

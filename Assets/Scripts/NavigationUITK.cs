@@ -23,20 +23,24 @@ public class NavigationUITK : MonoBehaviour
     bool isNavigating = false;
 
     const string FROM_PLACEHOLDER = "Chọn điểm bắt đầu";
-    const string TO_PLACEHOLDER = "Chọn điểm đến";
+    const string TO_PLACEHOLDER   = "Chọn điểm đến";
 
-    // --- UI card refs ---
-    VisualElement card;              // <-- IMPORTANT: field, not local
+    // --- UI refs ---
+    VisualElement card;
     VisualElement cardHeader;
     VisualElement cardContent;
+    VisualElement topbar;
     Label chevron;
     bool isCollapsed = false;
+
+    // Hover flags (event-driven, reliable)
+    bool overCard = false;
+    bool overTopbar = false;
 
     IVisualElementScheduledItem uiPickScheduler;
     IPanel panel;
     VisualElement rootVE;
 
-    // Optional debug toggle
     [Header("Debug")]
     public bool logPicked = false;
 
@@ -56,33 +60,41 @@ public class NavigationUITK : MonoBehaviour
         }
 
         rootVE = root;
-
-        // IMPORTANT: root.panel can be null in Start in some setups.
-        // We'll lazily initialize panel in UpdateCameraUiBlock().
-        panel = root.panel;
+        panel  = root.panel;
 
         // Prevent full-screen root from being picked everywhere.
+        // (We do NOT rely on Pick for hover on card/topbar anymore.)
         root.pickingMode = PickingMode.Ignore;
 
-        Debug.Log($"NavigationUITK: root child count = {root.childCount}");
-
-        // --- scope everything under navCard ---
+        // --- navCard ---
         card = root.Q<VisualElement>("navCard");
         if (card == null)
         {
             Debug.LogError("NavigationUITK: navCard not found in visual tree.");
             return;
         }
-
-        // Ensure navCard itself is pickable
         card.pickingMode = PickingMode.Position;
+
+        // --- topbar ---
+        topbar = root.Q<VisualElement>("topbar");
+        if (topbar == null)
+        {
+            Debug.LogWarning("NavigationUITK: topbar not found. Header won't block camera.");
+        }
+        else
+        {
+            topbar.pickingMode = PickingMode.Position;
+        }
+
+        // Track hover using pointer enter/leave (more reliable than panel.Pick for this)
+        RegisterHoverTracking();
 
         // Start scheduler AFTER we have rootVE.
         uiPickScheduler = rootVE.schedule.Execute(UpdateCameraUiBlock).Every(16);
 
-        cardHeader = card.Q<VisualElement>("cardHeader");
+        cardHeader  = card.Q<VisualElement>("cardHeader");
         cardContent = card.Q<VisualElement>("cardContent");
-        chevron = card.Q<Label>("chevron");
+        chevron     = card.Q<Label>("chevron");
 
         if (cardHeader != null && cardContent != null)
         {
@@ -94,18 +106,18 @@ public class NavigationUITK : MonoBehaviour
             });
         }
 
-        fromDropdown = card.Q<DropdownField>("fromDropdown");
-        toDropdown = card.Q<DropdownField>("toDropdown");
+        fromDropdown  = card.Q<DropdownField>("fromDropdown");
+        toDropdown    = card.Q<DropdownField>("toDropdown");
         floorDropdown = card.Q<DropdownField>("floorDropdown");
-        navigateBtn = card.Q<Button>("navigateBtn");
-        refocusBtn = card.Q<Button>("refocusBtn");
+        navigateBtn   = card.Q<Button>("navigateBtn");
+        refocusBtn    = card.Q<Button>("refocusBtn");
 
         if (fromDropdown == null || toDropdown == null || floorDropdown == null || navigateBtn == null)
         {
-            if (fromDropdown == null) Debug.LogError("NavigationUITK: Missing fromDropdown");
-            if (toDropdown == null) Debug.LogError("NavigationUITK: Missing toDropdown");
+            if (fromDropdown == null)  Debug.LogError("NavigationUITK: Missing fromDropdown");
+            if (toDropdown == null)    Debug.LogError("NavigationUITK: Missing toDropdown");
             if (floorDropdown == null) Debug.LogError("NavigationUITK: Missing floorDropdown");
-            if (navigateBtn == null) Debug.LogError("NavigationUITK: Missing navigateBtn");
+            if (navigateBtn == null)   Debug.LogError("NavigationUITK: Missing navigateBtn");
             return;
         }
 
@@ -144,6 +156,22 @@ public class NavigationUITK : MonoBehaviour
         RefreshRefocusButtonState();
     }
 
+    void RegisterHoverTracking()
+    {
+        // TrickleDown ensures the container gets events from its children (labels, images, etc.)
+        if (card != null)
+        {
+            card.RegisterCallback<PointerEnterEvent>(_ => overCard = true, TrickleDown.TrickleDown);
+            card.RegisterCallback<PointerLeaveEvent>(_ => overCard = false, TrickleDown.TrickleDown);
+        }
+
+        if (topbar != null)
+        {
+            topbar.RegisterCallback<PointerEnterEvent>(_ => overTopbar = true, TrickleDown.TrickleDown);
+            topbar.RegisterCallback<PointerLeaveEvent>(_ => overTopbar = false, TrickleDown.TrickleDown);
+        }
+    }
+
     void OnDisable()
     {
         if (cam != null) cam.blockInputByUI = false;
@@ -170,8 +198,8 @@ public class NavigationUITK : MonoBehaviour
 
     void SetControlsLocked(bool locked)
     {
-        if (fromDropdown != null) fromDropdown.SetEnabled(!locked);
-        if (toDropdown != null) toDropdown.SetEnabled(!locked);
+        if (fromDropdown != null)  fromDropdown.SetEnabled(!locked);
+        if (toDropdown != null)    toDropdown.SetEnabled(!locked);
         if (floorDropdown != null) floorDropdown.SetEnabled(!locked);
 
         if (refocusBtn != null)
@@ -267,7 +295,7 @@ public class NavigationUITK : MonoBehaviour
         var points = nav.ActivePointNames ?? new List<string>();
 
         fromDropdown.choices = new List<string>(points);
-        toDropdown.choices = new List<string>(points);
+        toDropdown.choices   = new List<string>(points);
 
         RefreshSelections();
     }
@@ -341,76 +369,57 @@ public class NavigationUITK : MonoBehaviour
             if (panel == null) return;
         }
 
-        var mouse = Mouse.current;
-        if (mouse == null) return;
-
-        Vector2 screenPos = mouse.position.ReadValue();
-        Vector2 panelPos = RuntimePanelUtils.ScreenToPanel(panel, screenPos);
-
-        VisualElement picked = panel.Pick(panelPos);
-
         bool block = false;
 
-        // A) Pointer capture = UI currently interacting (dragging/scrolling/popup etc.)
-        // NOTE: returns IEventHandler, not VisualElement.
+        // A) Pointer capture = UI currently interacting (dropdown popup / scrolling / drag etc.)
         IEventHandler capturingHandler = panel.GetCapturingElement(PointerId.mousePointerId);
         if (capturingHandler != null)
             block = true;
 
-        // B) Hovered element is inside navCard
-        if (!block && picked != null && card != null)
-        {
-            var ve = picked;
-            while (ve != null)
-            {
-                if (ve == card)
-                {
-                    block = true;
-                    break;
-                }
-                ve = ve.parent;
-            }
-        }
+        // B) Hover flags (topbar/card) - reliable
+        if (!block && (overCard || overTopbar))
+            block = true;
 
-        // C) Dropdown popup lists often live outside navCard hierarchy
-        if (!block && picked != null)
+        // C) Fallback: use Pick only for dropdown popup detection
+        VisualElement picked = null;
+        if (!block || logPicked)
         {
-            if (LooksLikeDropdownPopup(picked))
-                block = true;
+            var mouse = Mouse.current;
+            if (mouse != null)
+            {
+                Vector2 screenPos = mouse.position.ReadValue();
+                Vector2 panelPos  = RuntimePanelUtils.ScreenToPanel(panel, screenPos);
+                picked = panel.Pick(panelPos);
+
+                if (!block && picked != null && LooksLikeDropdownPopup(picked))
+                    block = true;
+            }
         }
 
         cam.blockInputByUI = block;
 
         if (logPicked)
         {
-            // Safe logging: capturing is IEventHandler, might be VisualElement
             var capturingVE = capturingHandler as VisualElement;
 
-            if (picked != null || capturingHandler != null)
-            {
-                string pickedStr = picked != null ? $"{picked.name}/{picked.GetType().Name}" : "null";
-                string capStr = capturingVE != null ? $"{capturingVE.name}/{capturingVE.GetType().Name}"
-                                                    : (capturingHandler != null ? capturingHandler.GetType().Name : "null");
+            string pickedStr = picked != null ? $"{picked.name}/{picked.GetType().Name}" : "null";
+            string capStr = capturingVE != null ? $"{capturingVE.name}/{capturingVE.GetType().Name}"
+                                                : (capturingHandler != null ? capturingHandler.GetType().Name : "null");
 
-                Debug.Log($"UIBlock: block={block} picked={pickedStr} capturing={capStr}");
-            }
+            Debug.Log($"UIBlock: block={block} overCard={overCard} overTopbar={overTopbar} picked={pickedStr} capturing={capStr}");
         }
     }
 
-
     bool LooksLikeDropdownPopup(VisualElement ve)
     {
-        // Walk upward a bit; popup list items are nested.
         int steps = 0;
-        while (ve != null && steps++ < 12)
+        while (ve != null && steps++ < 16)
         {
             string n = ve.name ?? "";
 
-            // Name heuristics
             if (n.IndexOf("unity-dropdown", StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (n.IndexOf("popup", StringComparison.OrdinalIgnoreCase) >= 0) return true;
 
-            // Class heuristics (depends on Unity version/theme)
             if (ve.ClassListContains("unity-base-dropdown")) return true;
             if (ve.ClassListContains("unity-base-popup-field")) return true;
             if (ve.ClassListContains("unity-popup-window")) return true;
