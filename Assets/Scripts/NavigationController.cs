@@ -29,7 +29,6 @@ public class NavigationController : MonoBehaviour
     public float sizeAt1Meter = 1.4f;          // (Optional) not used in default scaling mode below
     public float scaleStartDistance = 2f;
     public float scaleEndDistance = 30f;
-
     [Header("Camera")]
     public Transform mainCamera;
 
@@ -219,7 +218,6 @@ public class NavigationController : MonoBehaviour
         ClampSelections();
 
         ActiveFloorChanged?.Invoke();
-        PreviewPath();
     }
 
     void Update()
@@ -375,7 +373,6 @@ public class NavigationController : MonoBehaviour
 
         ActiveFloorChanged?.Invoke();
         FloorsChanged?.Invoke();
-        PreviewPath();
     }
 
     public void SetFloorFromDropdown(int dropdownIndex)
@@ -427,16 +424,7 @@ public class NavigationController : MonoBehaviour
         else ApplyNavTransparency(false);
 
         SelectedFrom = Mathf.Clamp(index, 0, allPoints.Count - 1);
-
-        if (!ShowAllFloors)
-        {
-            int floorIdx = allPointFloorIndex[SelectedFrom];
-            if (floorIdx >= 0)
-                SetFloor(floorIdx);
-        }
-
         SelectionChanged?.Invoke();
-        PreviewPath();
     }
 
     public void SetTo(int index)
@@ -450,16 +438,7 @@ public class NavigationController : MonoBehaviour
         else ApplyNavTransparency(false);
 
         SelectedTo = Mathf.Clamp(index, 0, allPoints.Count - 1);
-
-        if (!ShowAllFloors)
-        {
-            int floorIdx = allPointFloorIndex[SelectedTo];
-            if (floorIdx >= 0)
-                SetFloor(floorIdx);
-        }
-
         SelectionChanged?.Invoke();
-        PreviewPath();
     }
 
     // =========================================================
@@ -682,9 +661,6 @@ public class NavigationController : MonoBehaviour
 
         // NEW: clear preview override before restoring preview
         SetPreviewCrossFloorMode(false);
-
-        if (restorePreview)
-            PreviewPath();
     }
 
     public void CancelAndResetToPlaceholder()
@@ -695,7 +671,6 @@ public class NavigationController : MonoBehaviour
         SelectedTo = -1;
 
         SelectionChanged?.Invoke();
-        PreviewPath();
     }
 
     // =========================================================
@@ -1065,7 +1040,6 @@ public class NavigationController : MonoBehaviour
         ApplyVisibleFloors();
 
         FloorsChanged?.Invoke();
-        PreviewPath();
     }
 
     public void ExitAllFloorsAndFocusFloor(int floorIndex)
@@ -1093,7 +1067,6 @@ public class NavigationController : MonoBehaviour
         SelectedFloorDropdownIndex = floorIndex + 1;
         ActiveFloorChanged?.Invoke();
         FloorsChanged?.Invoke();
-        PreviewPath();
 
         if (IsRouteActive && navIsCrossFloor)
             ApplyNavTransparency(true);

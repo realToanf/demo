@@ -1,92 +1,193 @@
+/* ---------------------------
+   Global spacing + layout
+---------------------------- */
+
+/* Card container */
 .root {
     position: absolute;
     right: 24px;
-    top: 150px;
+    top: 24px;              /* IMPORTANT: card sits below top bar (because it's inside .content) */
     width: 380px;
 }
+
+/* Full-screen HUD root */
+.hud {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+}
+
+/* Content under the top bar */
+.content {
+    flex-grow: 1;
+    padding-top: 16px;      /* breathing room under bar */
+}
+
+
+/* ---------------------------
+   Top Bar (premium look)
+---------------------------- */
+
+.topbar {
+    height: 96px;
+    padding-left: 24px;
+    padding-right: 24px;
+
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+
+    /* solid, but with depth */
+    background-color: rgb(255,255,255);
+
+    /* crisp divider + soft shadow */
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(226,232,240);
+    box-shadow: 0px 10px 26px rgba(0,0,0,0.10);
+
+    overflow: hidden; /* nothing can spill out */
+}
+
+/* Side blocks keep center perfectly centered */
+.topbar__side {
+    width: 180px;      /* a bit wider so logos feel comfy */
+    height: 100%;
+    flex-shrink: 0;
+
+    justify-content: center;
+    align-items: center;
+
+    overflow: hidden;
+}
+
+.topbar__center {
+    flex-grow: 1;
+    align-items: center;
+    justify-content: center;
+
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+/* Stronger typography */
+.topbar__title {
+    font-size: 22px;
+    unity-font-style: bold;
+    color: rgb(15,23,42);
+}
+
+.topbar__subtitle {
+    margin-top: 4px;
+    font-size: 13px;
+    color: rgb(100,116,139);
+}
+
+/* Logos (responsive + never “fly out”) */
+.logo {
+    height: 78%;
+    width: 78%;
+    max-width: 100%;
+    max-height: 100%;
+    flex-shrink: 0;
+
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.logo--left  { background-image: resource("logo_noitiet"); }
+.logo--right { background-image: resource("logo_isofh"); }
+
+
+/* ---------------------------
+   Card (cleaner + tighter)
+---------------------------- */
 
 .card {
     background-color: rgb(255,255,255);
     border-radius: 16px;
     padding: 18px;
-    box-shadow: 0px 8px 24px rgba(0,0,0,0.14);
+
+    /* softer, more modern shadow */
+    box-shadow: 0px 14px 34px rgba(0,0,0,0.14);
+
+    /* optional: subtle border makes it feel crisp */
+    border-width: 1px;
+    border-color: rgb(226,232,240);
 }
 
+/* Header row */
 .header {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
+
     margin-bottom: 12px;
+    cursor: pointer;
 }
 
 .title {
     font-size: 20px;
     unity-font-style: bold;
-    color: rgb(17,24,39);
+    color: rgb(15,23,42);
 }
 
-.iconBtn {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background-color: rgb(242,244,247);
-    color: rgb(52,64,84);
+/* Chevron nicer alignment */
+.chevron {
+    unity-text-align: middle-right;
+    color: rgb(100,116,139);
+    font-size: 16px;
 }
+
+/* Collapsible behavior */
+.cardContent {
+    overflow: hidden;
+}
+
+/* When collapsed */
+.card--collapsed .cardContent {
+    display: none;
+}
+
+
+/* ---------------------------
+   Fields + labels
+---------------------------- */
 
 .field {
-    margin-top: 10px;
+    margin-top: 12px;
+}
+
+.labelRow {
+    flex-direction: row;
+    align-items: center;
 }
 
 .label {
     font-size: 12px;
-    color: rgb(102,112,133);
+    color: rgb(100,116,139);
     margin-bottom: 6px;
 }
 
+.labelRow .label {
+    flex-grow: 1;
+}
+
+/* Dropdowns */
 .dropdown {
     height: 44px;
     border-radius: 12px;
+
     background-color: rgb(255,255,255);
     border-width: 1px;
-    border-color: rgb(208,213,221);
-    padding-left: 10px;
-    padding-right: 10px;
-    color: rgb(17,24,39);
+    border-color: rgb(203,213,225);
+
+    padding-left: 12px;
+    padding-right: 12px;
+
+    color: rgb(15,23,42);
 }
 
-.cta {
-    margin-top: 14px;
-    height: 48px;
-    border-radius: 14px;
-    background-color: rgb(22, 163, 74);
-    color: white;
-    unity-font-style: bold;
-    font-size: 16px;
-}
-
-.cta:hover {
-    background-color: rgb(21, 128, 61);
-}
-
-.cta.cancel {
-    background-color: rgb(220, 38, 38);
-}
-
-.cta.cancel:hover {
-    background-color: rgb(185, 28, 28);
-}
-
-.cta:disabled {
-    opacity: 0.45;
-}
-
-.divider {
-    height: 1px;
-    background-color: rgb(234,236,240);
-    margin-top: 16px;
-    margin-bottom: 6px;
-}
-
+/* Make inner input clean */
 .dropdown,
 .dropdown .unity-base-field__input,
 .dropdown .unity-base-field__text,
@@ -101,59 +202,71 @@
     box-shadow: none;
 }
 
-.labelRow {
-    flex-direction: row;
-    align-items: center;
+
+/* ---------------------------
+   Buttons (more polished)
+---------------------------- */
+
+.cta {
+    margin-top: 14px;
+    height: 48px;
+    border-radius: 14px;
+
+    background-color: rgb(22, 163, 74);
+    color: white;
+
+    unity-font-style: bold;
+    font-size: 16px;
+
+    box-shadow: 0px 10px 18px rgba(22,163,74,0.22);
 }
 
-.labelRow .label {
-    flex-grow: 1;     /* pushes icon to the right */
+.cta:hover {
+    background-color: rgb(21, 128, 61);
 }
 
-.pin {
-    width: 16px;
-    height: 16px;
-    margin-left: 8px;
-
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
+.cta.cancel {
+    background-color: rgb(220, 38, 38);
+    box-shadow: 0px 10px 18px rgba(220,38,38,0.18);
 }
 
-/* Put these pngs in Assets/Resources/ */
-.pin--red {
-    background-image: resource("pin_red");
+.cta.cancel:hover {
+    background-color: rgb(185, 28, 28);
 }
 
-.pin--green {
-    background-image: resource("pin_green");
+.cta:disabled {
+    opacity: 0.45;
+    box-shadow: none;
 }
 
+/* Secondary action buttons */
 .modeBtn, .refocus {
     margin-top: 10px;
     margin-bottom: 10px;
     height: 40px;
     border-radius: 12px;
 
-    background-color: rgb(21, 61, 128);
+    background-color: rgb(30, 64, 175);
     color: white;
 
     unity-font-style: bold;
     font-size: 14px;
+
+    box-shadow: 0px 10px 18px rgba(30,64,175,0.18);
 }
 
 .modeBtn:hover, .refocus:hover {
-    background-color: rgb(31,41,55);
+    background-color: rgb(23,37,84);
 }
 
-/* Chevron button */
-.header {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-}
 
-.chevron {
-    unity-text-align: middle-right;
+/* ---------------------------
+   Divider
+---------------------------- */
+
+.divider {
+    height: 1px;
+    background-color: rgb(226,232,240);
+    margin-top: 16px;
+    margin-bottom: 6px;
 }

@@ -1,7 +1,9 @@
 // NavigationUITK.cs
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.InputSystem;
 
 public class NavigationUITK : MonoBehaviour
 {
@@ -9,25 +11,34 @@ public class NavigationUITK : MonoBehaviour
     public NavigationController nav;
 
     [Header("Optional: Refocus Button -> CameraController")]
-    public CameraController cam; 
+    public CameraController cam;
 
     DropdownField fromDropdown;
     DropdownField toDropdown;
     DropdownField floorDropdown;
     Button navigateBtn;
 
-    // NEW
     Button refocusBtn;
 
     bool isNavigating = false;
 
     const string FROM_PLACEHOLDER = "Chọn điểm bắt đầu";
-    const string TO_PLACEHOLDER   = "Chọn điểm đến";
+    const string TO_PLACEHOLDER = "Chọn điểm đến";
 
+    // --- UI card refs ---
+    VisualElement card;              // <-- IMPORTANT: field, not local
     VisualElement cardHeader;
     VisualElement cardContent;
     Label chevron;
     bool isCollapsed = false;
+
+    IVisualElementScheduledItem uiPickScheduler;
+    IPanel panel;
+    VisualElement rootVE;
+
+    // Optional debug toggle
+    [Header("Debug")]
+    public bool logPicked = false;
 
     void Start()
     {
@@ -44,26 +55,34 @@ public class NavigationUITK : MonoBehaviour
             return;
         }
 
+        rootVE = root;
+
+        // IMPORTANT: root.panel can be null in Start in some setups.
+        // We'll lazily initialize panel in UpdateCameraUiBlock().
+        panel = root.panel;
+
+        // Prevent full-screen root from being picked everywhere.
+        root.pickingMode = PickingMode.Ignore;
+
         Debug.Log($"NavigationUITK: root child count = {root.childCount}");
 
-        // Dump all named elements so we see what exists
-        foreach (var e in root.Query<VisualElement>().ToList())
-        {
-            if (!string.IsNullOrEmpty(e.name))
-                Debug.Log($"UI element: name={e.name}, type={e.GetType().Name}");
-        }
-
         // --- scope everything under navCard ---
-        var card = root.Q<VisualElement>("navCard");
+        card = root.Q<VisualElement>("navCard");
         if (card == null)
         {
             Debug.LogError("NavigationUITK: navCard not found in visual tree.");
             return;
         }
 
-        cardHeader  = card.Q<VisualElement>("cardHeader");
+        // Ensure navCard itself is pickable
+        card.pickingMode = PickingMode.Position;
+
+        // Start scheduler AFTER we have rootVE.
+        uiPickScheduler = rootVE.schedule.Execute(UpdateCameraUiBlock).Every(16);
+
+        cardHeader = card.Q<VisualElement>("cardHeader");
         cardContent = card.Q<VisualElement>("cardContent");
-        chevron     = card.Q<Label>("chevron");
+        chevron = card.Q<Label>("chevron");
 
         if (cardHeader != null && cardContent != null)
         {
@@ -71,37 +90,22 @@ public class NavigationUITK : MonoBehaviour
 
             cardHeader.RegisterCallback<ClickEvent>(_ =>
             {
-                Debug.Log("NavigationUITK: cardHeader clicked");
                 SetCollapsed(!isCollapsed);
             });
         }
-        else
-        {
-            Debug.LogWarning(
-                $"NavigationUITK: header found = {cardHeader != null}, content found = {cardContent != null}"
-            );
-        }
 
-        fromDropdown  = card.Q<DropdownField>("fromDropdown");
-        toDropdown    = card.Q<DropdownField>("toDropdown");
+        fromDropdown = card.Q<DropdownField>("fromDropdown");
+        toDropdown = card.Q<DropdownField>("toDropdown");
         floorDropdown = card.Q<DropdownField>("floorDropdown");
-        navigateBtn   = card.Q<Button>("navigateBtn");
-        refocusBtn    = card.Q<Button>("refocusBtn");
-
-        Debug.Log(
-            $"NavigationUITK: from={fromDropdown != null}, " +
-            $"to={toDropdown != null}, " +
-            $"floor={floorDropdown != null}, " +
-            $"navBtn={navigateBtn != null}, " +
-            $"refocus={refocusBtn != null}"
-        );
+        navigateBtn = card.Q<Button>("navigateBtn");
+        refocusBtn = card.Q<Button>("refocusBtn");
 
         if (fromDropdown == null || toDropdown == null || floorDropdown == null || navigateBtn == null)
         {
-            if (fromDropdown == null)  Debug.LogError("NavigationUITK: Missing fromDropdown");
-            if (toDropdown == null)    Debug.LogError("NavigationUITK: Missing toDropdown");
+            if (fromDropdown == null) Debug.LogError("NavigationUITK: Missing fromDropdown");
+            if (toDropdown == null) Debug.LogError("NavigationUITK: Missing toDropdown");
             if (floorDropdown == null) Debug.LogError("NavigationUITK: Missing floorDropdown");
-            if (navigateBtn == null)   Debug.LogError("NavigationUITK: Missing navigateBtn");
+            if (navigateBtn == null) Debug.LogError("NavigationUITK: Missing navigateBtn");
             return;
         }
 
@@ -140,9 +144,11 @@ public class NavigationUITK : MonoBehaviour
         RefreshRefocusButtonState();
     }
 
-
     void OnDisable()
     {
+        if (cam != null) cam.blockInputByUI = false;
+        uiPickScheduler?.Pause();
+
         if (nav == null) return;
 
         nav.FloorsChanged -= RefreshFloors;
@@ -153,25 +159,21 @@ public class NavigationUITK : MonoBehaviour
         if (navigateBtn != null)
             navigateBtn.clicked -= OnNavigateButtonClicked;
 
-        // NEW
         if (refocusBtn != null)
             refocusBtn.clicked -= OnRefocusClicked;
     }
 
     void Update()
     {
-        // NEW: keep refocus availability updated
         RefreshRefocusButtonState();
     }
 
     void SetControlsLocked(bool locked)
     {
-        if (fromDropdown != null)  fromDropdown.SetEnabled(!locked);
-        if (toDropdown != null)    toDropdown.SetEnabled(!locked);
+        if (fromDropdown != null) fromDropdown.SetEnabled(!locked);
+        if (toDropdown != null) toDropdown.SetEnabled(!locked);
         if (floorDropdown != null) floorDropdown.SetEnabled(!locked);
-        // If you have more UI controls, disable/enable them here as well.
 
-        // NEW: refocus should also respect lock state
         if (refocusBtn != null)
             refocusBtn.SetEnabled(!locked);
     }
@@ -180,16 +182,13 @@ public class NavigationUITK : MonoBehaviour
     {
         if (nav == null) return;
 
-        // If route is active (even after camera finished), clicking cancels + resets placeholders
         if (nav.IsRouteActive)
         {
             nav.CancelAndResetToPlaceholder();
             return;
         }
 
-        // Otherwise: start navigation
         nav.StartNavigation();
-
         SetControlsLocked(true);
     }
 
@@ -198,15 +197,13 @@ public class NavigationUITK : MonoBehaviour
         isNavigating = navigating;
         if (navigateBtn == null || nav == null) return;
 
-        // Disable dropdowns ONLY during animation
         SetControlsLocked(isNavigating);
 
-        // Button label depends on route state, not animation state
         if (nav.IsRouteActive)
         {
             navigateBtn.text = "Hủy chỉ đường";
             navigateBtn.AddToClassList("cancel");
-            navigateBtn.SetEnabled(true); // always allow cancel when route active
+            navigateBtn.SetEnabled(true);
         }
         else
         {
@@ -222,14 +219,12 @@ public class NavigationUITK : MonoBehaviour
     {
         if (navigateBtn == null || nav == null) return;
 
-        // If a route is active, button must stay enabled to cancel
         if (nav.IsRouteActive)
         {
             navigateBtn.SetEnabled(true);
             return;
         }
 
-        // If animating and no route yet, keep disabled (optional)
         if (isNavigating)
         {
             navigateBtn.SetEnabled(false);
@@ -237,28 +232,23 @@ public class NavigationUITK : MonoBehaviour
         }
 
         bool valid = nav.SelectedFrom >= 0 &&
-                    nav.SelectedTo >= 0 &&
-                    nav.SelectedFrom != nav.SelectedTo;
+                     nav.SelectedTo >= 0 &&
+                     nav.SelectedFrom != nav.SelectedTo;
 
         navigateBtn.SetEnabled(valid);
     }
 
-    // NEW
     void OnRefocusClicked()
     {
         if (cam == null) return;
         cam.RefocusNow();
     }
 
-    // NEW
     void RefreshRefocusButtonState()
     {
         if (refocusBtn == null) return;
-
-        // Only locked during animation
         refocusBtn.SetEnabled(!isNavigating && cam != null);
     }
-
 
     void RefreshFloors()
     {
@@ -274,12 +264,10 @@ public class NavigationUITK : MonoBehaviour
 
     void RefreshActiveFloor()
     {
-        var points = nav.ActivePointNames;
-        if (points == null)
-            points = new List<string>();
+        var points = nav.ActivePointNames ?? new List<string>();
 
         fromDropdown.choices = new List<string>(points);
-        toDropdown.choices   = new List<string>(points);
+        toDropdown.choices = new List<string>(points);
 
         RefreshSelections();
     }
@@ -327,18 +315,110 @@ public class NavigationUITK : MonoBehaviour
         RefreshNavigateButtonState();
         RefreshRefocusButtonState();
     }
-    
+
     void SetCollapsed(bool collapsed)
     {
         isCollapsed = collapsed;
 
         if (cardContent != null)
-        {
             cardContent.style.display = isCollapsed ? DisplayStyle.None : DisplayStyle.Flex;
-        }
+
         if (chevron != null)
-        {
             chevron.text = collapsed ? "▸" : "▾";
+    }
+
+    void UpdateCameraUiBlock()
+    {
+        if (cam == null || uiDocument == null) return;
+
+        // Lazy init panel
+        if (panel == null)
+        {
+            var root = uiDocument.rootVisualElement;
+            if (root == null) return;
+
+            panel = root.panel;
+            if (panel == null) return;
         }
+
+        var mouse = Mouse.current;
+        if (mouse == null) return;
+
+        Vector2 screenPos = mouse.position.ReadValue();
+        Vector2 panelPos = RuntimePanelUtils.ScreenToPanel(panel, screenPos);
+
+        VisualElement picked = panel.Pick(panelPos);
+
+        bool block = false;
+
+        // A) Pointer capture = UI currently interacting (dragging/scrolling/popup etc.)
+        // NOTE: returns IEventHandler, not VisualElement.
+        IEventHandler capturingHandler = panel.GetCapturingElement(PointerId.mousePointerId);
+        if (capturingHandler != null)
+            block = true;
+
+        // B) Hovered element is inside navCard
+        if (!block && picked != null && card != null)
+        {
+            var ve = picked;
+            while (ve != null)
+            {
+                if (ve == card)
+                {
+                    block = true;
+                    break;
+                }
+                ve = ve.parent;
+            }
+        }
+
+        // C) Dropdown popup lists often live outside navCard hierarchy
+        if (!block && picked != null)
+        {
+            if (LooksLikeDropdownPopup(picked))
+                block = true;
+        }
+
+        cam.blockInputByUI = block;
+
+        if (logPicked)
+        {
+            // Safe logging: capturing is IEventHandler, might be VisualElement
+            var capturingVE = capturingHandler as VisualElement;
+
+            if (picked != null || capturingHandler != null)
+            {
+                string pickedStr = picked != null ? $"{picked.name}/{picked.GetType().Name}" : "null";
+                string capStr = capturingVE != null ? $"{capturingVE.name}/{capturingVE.GetType().Name}"
+                                                    : (capturingHandler != null ? capturingHandler.GetType().Name : "null");
+
+                Debug.Log($"UIBlock: block={block} picked={pickedStr} capturing={capStr}");
+            }
+        }
+    }
+
+
+    bool LooksLikeDropdownPopup(VisualElement ve)
+    {
+        // Walk upward a bit; popup list items are nested.
+        int steps = 0;
+        while (ve != null && steps++ < 12)
+        {
+            string n = ve.name ?? "";
+
+            // Name heuristics
+            if (n.IndexOf("unity-dropdown", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (n.IndexOf("popup", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+            // Class heuristics (depends on Unity version/theme)
+            if (ve.ClassListContains("unity-base-dropdown")) return true;
+            if (ve.ClassListContains("unity-base-popup-field")) return true;
+            if (ve.ClassListContains("unity-popup-window")) return true;
+            if (ve.ClassListContains("unity-list-view")) return true;
+
+            ve = ve.parent;
+        }
+
+        return false;
     }
 }

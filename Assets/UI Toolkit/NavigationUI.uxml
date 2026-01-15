@@ -1,45 +1,70 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <!-- HUD + TopBar styles -->
+    <ui:Style src="project://database/Assets/UI Toolkit/Hud.uss" />
+
+    <!-- Your existing card styles -->
     <ui:Style src="project://database/Assets/UI Toolkit/NavigationUI.uss?fileID=7433441132597879392&amp;guid=7bb56356fbf6e144aa85a6694b08e62c&amp;type=3#NavigationUI"/>
 
-    <ui:VisualElement class="root">
-        <ui:VisualElement class="card" name="navCard">
-            <ui:VisualElement class="header" name="cardHeader">
-                <ui:Label text="Chỉ đường" class="title"/>
-                <ui:Label name="chevron" text="▾" class="chevron" />
+    <ui:VisualElement class="hud">
+
+        <!-- TOP BAR -->
+        <ui:VisualElement class="topbar">
+            <ui:VisualElement class="topbar__side">
+                <ui:VisualElement class="logo logo--left" name="logoLeft" />
             </ui:VisualElement>
 
-            <ui:VisualElement name="cardContent" class="cardContent">
-
-                <!-- FROM -->
-                <ui:VisualElement class="field">
-                    <ui:VisualElement class="labelRow">
-                        <ui:Label text="Bắt đầu từ phòng" class="label" style="font-size: 15px;"/>
-                    </ui:VisualElement>
-                    <ui:DropdownField name="fromDropdown" class="dropdown"/>
-                </ui:VisualElement>
-
-                <!-- TO -->
-                <ui:VisualElement class="field">
-                    <ui:VisualElement class="labelRow">
-                        <ui:Label text="Tới phòng" class="label" style="font-size: 15px;"/>
-                    </ui:VisualElement>
-                    <ui:DropdownField name="toDropdown" class="dropdown"/>
-                </ui:VisualElement>
-
-                <ui:Button text="Bắt đầu đi" name="navigateBtn" class="cta"/>
-                <ui:VisualElement class="divider"/>
-
-                <ui:VisualElement name="floorSection">
-                    <ui:VisualElement class="field">
-                        <ui:Label text="Chọn tầng" class="label" style="font-size: 15px;"/>
-                        <ui:DropdownField name="floorDropdown" class="dropdown"/>
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <ui:Button name="modeBtn" text="Chuyển chế độ" class="modeBtn" />
-                <ui:Button name="refocusBtn" text="Quay lại vị trí ban đầu" class="refocus" />
-
+            <ui:VisualElement class="topbar__center">
+                <ui:Label class="topbar__title" text="Bản đồ 3D Bệnh Viện Nội Tiết" />
+                <ui:Label class="topbar__subtitle" text="Hệ thống chỉ đường thông minh 3D - Tìm đường đi, tìm phòng khám dễ dàng" />
             </ui:VisualElement>
+
+            <ui:VisualElement class="topbar__side topbar__side--right">
+                <ui:VisualElement class="logo logo--right" name="logoRight" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- CONTENT AREA (everything below the bar) -->
+        <ui:VisualElement class="content">
+
+            <!-- ✅ Your existing card root goes here -->
+            <ui:VisualElement class="root">
+                <ui:VisualElement class="card" name="navCard">
+                    <ui:VisualElement class="header" name="cardHeader">
+                        <ui:Label text="Chỉ đường" class="title"/>
+                        <ui:Label name="chevron" text="▾" class="chevron" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="cardContent" class="cardContent">
+                        <ui:VisualElement class="field">
+                            <ui:VisualElement class="labelRow">
+                                <ui:Label text="Bắt đầu từ phòng" class="label" style="font-size: 15px;"/>
+                            </ui:VisualElement>
+                            <ui:DropdownField name="fromDropdown" class="dropdown"/>
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="field">
+                            <ui:VisualElement class="labelRow">
+                                <ui:Label text="Tới phòng" class="label" style="font-size: 15px;"/>
+                            </ui:VisualElement>
+                            <ui:DropdownField name="toDropdown" class="dropdown"/>
+                        </ui:VisualElement>
+
+                        <ui:Button text="Bắt đầu đi" name="navigateBtn" class="cta"/>
+                        <ui:VisualElement class="divider"/>
+
+                        <ui:VisualElement name="floorSection">
+                            <ui:VisualElement class="field">
+                                <ui:Label text="Chọn tầng" class="label" style="font-size: 15px;"/>
+                                <ui:DropdownField name="floorDropdown" class="dropdown"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:Button name="modeBtn" text="Chuyển chế độ" class="modeBtn" />
+                        <ui:Button name="refocusBtn" text="Quay lại vị trí ban đầu" class="refocus" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

@@ -29,6 +29,9 @@ public class CameraController : MonoBehaviour
     public bool clampPivotToZone = true;    
     public bool clampHeightToZone = true;   
 
+    [Header("UI Input Block")]
+    public bool blockInputByUI = false;
+
     [Header("Refocus")]
     public Transform refocusPose;
     public Transform idleSnapTarget;
@@ -119,11 +122,16 @@ public class CameraController : MonoBehaviour
 
     void Update()
     {
-        if (lockCamera) return;
+        // If an automated move coroutine is driving the camera, let it run untouched.
+        if (lockCamera)
+            return;
 
-        bool inputThisFrame = HasAnyInputThisFrame();
+        // We still want internal camera maintenance even when UI blocks input.
+        bool inputBlocked = blockInputByUI;
 
-        if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
+        bool inputThisFrame = !inputBlocked && HasAnyInputThisFrame();
+
+        if (!inputBlocked && Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame)
         {
             ToggleMode();
             inputThisFrame = true;
@@ -139,16 +147,27 @@ public class CameraController : MonoBehaviour
         }
         else
         {
-            // No input: if idle long enough, instantly re-lock to pivot target
-            if (mode == CameraMode.BirdEye && !pivotLocked && pivotTarget != null)
+            // If UI is blocking, DO NOT treat that as "user is idle"
+            // (otherwise hovering UI can trigger relock/idle spin weirdness).
+            if (!inputBlocked)
             {
-                float idleFor = Time.time - lastInputTime;
-                if (idleFor >= relockAfterIdleSeconds)
-                    InstantRelockToPivot();
+                // No input: if idle long enough, instantly re-lock to pivot target
+                if (mode == CameraMode.BirdEye && !pivotLocked && pivotTarget != null)
+                {
+                    float idleFor = Time.time - lastInputTime;
+                    if (idleFor >= relockAfterIdleSeconds)
+                        InstantRelockToPivot();
+                }
+            }
+            else
+            {
+                // Optional: keep lastInputTime "fresh" while hovering UI
+                // so UI hovering doesn't trigger idle relock/spin.
+                lastInputTime = Time.time;
             }
         }
 
-        // While locked, keep following pivot target
+        // While locked, keep following pivot target (even if UI blocks input)
         if (mode == CameraMode.BirdEye && pivotLocked && pivotTarget != null)
         {
             birdPivot = pivotTarget.position + pivotOffset;
@@ -158,14 +177,19 @@ public class CameraController : MonoBehaviour
             birdDist = orbitOffset.magnitude;
         }
 
-        // Controls
-        TouchControl();
-        MouseKeyboardControl();
+        // Controls should be blocked when UI is hovered
+        if (!inputBlocked)
+        {
+            TouchControl();
+            MouseKeyboardControl();
+        }
 
+        // Always enforce zone so camera doesn't accumulate illegal positions
         EnforceZone();
 
-        // Idle spin only when locked
-        ApplyIdleSpin();
+        // Only spin if not blocked (hovering UI shouldn't cause spin)
+        if (!inputBlocked)
+            ApplyIdleSpin();
     }
 
     // ================= LOCK / RELOCK =================
