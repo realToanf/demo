@@ -28,7 +28,8 @@ public class NavigationController : MonoBehaviour
     public float maxLabelSize = 2.2f;
     public float sizeAt1Meter = 1.4f;          // (Optional) not used in default scaling mode below
     public float scaleStartDistance = 2f;
-    public float scaleEndDistance = 30f;
+    public float scaleEndDistance = 30f;    
+
     [Header("Camera")]
     public Transform mainCamera;
 
@@ -46,6 +47,29 @@ public class NavigationController : MonoBehaviour
     [Header("Gradual Draw")]
     public float revealSpeed = 12f; // meters per second
     public float lineHeightOffset = 0.05f; // reduce z-fighting
+
+    [Header("Elevators (Door points per floor)")]
+    public ElevatorShaft[] elevators;
+    [Header("Routing Speeds (seconds-based)")]
+    public float walkSpeed = 1.4f;
+    public float elevatorSpeed = 2.5f;
+    public float elevatorAvgWaitSeconds = 12f;
+    public bool forceVerticalAtShaftCenter = true;
+
+    [Serializable]
+    public class ElevatorStop
+    {
+        public int floorIndex;
+        public Transform[] doorPoints;
+    }
+
+    [Serializable]
+    public class ElevatorShaft
+    {
+        public string name;
+        public Transform shaftCenterXZ;
+        public ElevatorStop[] stops;
+    }
 
     [Header("Optional: Texture Scroll")]
     public bool enableTextureScroll = false;
@@ -528,11 +552,14 @@ public class NavigationController : MonoBehaviour
         Vector3 start = allPoints[SelectedFrom].position;
         Vector3 end = allPoints[SelectedTo].position;
 
-        if (NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
+        int fromFloor = allPointFloorIndex[SelectedFrom];
+        int toFloor   = allPointFloorIndex[SelectedTo];
+
+        if (TryBuildBestRoute(start, fromFloor, end, toFloor, out var corners))
         {
-            line.positionCount = path.corners.Length;
-            for (int i = 0; i < path.corners.Length; i++)
-                line.SetPosition(i, path.corners[i] + Vector3.up * lineHeightOffset);
+            line.positionCount = corners.Length;
+            for (int i = 0; i < corners.Length; i++)
+                line.SetPosition(i, corners[i] + Vector3.up * lineHeightOffset);
 
             PreviewPings();
         }
@@ -576,14 +603,16 @@ public class NavigationController : MonoBehaviour
         Vector3 start = allPoints[SelectedFrom].position;
         Vector3 end = allPoints[SelectedTo].position;
 
-        if (!NavMesh.CalculatePath(start, end, NavMesh.AllAreas, path))
+        int fromFloor = allPointFloorIndex[SelectedFrom];
+        int toFloor   = allPointFloorIndex[SelectedTo];
+
+        if (!TryBuildBestRoute(start, fromFloor, end, toFloor, out navCorners))
         {
-            Debug.LogError("NavigationController: NavMesh path failed");
+            Debug.LogError("NavigationController: Route build failed (stairs + elevators).");
             ClearPath();
             return;
         }
 
-        navCorners = path.corners;
         totalDistance = ComputeTotalDistance(navCorners);
         revealDistance = 0f;
 
@@ -671,6 +700,181 @@ public class NavigationController : MonoBehaviour
         SelectedTo = -1;
 
         SelectionChanged?.Invoke();
+    }
+
+    bool TryCalculateNavCorners(Vector3 from, Vector3 to, out Vector3[] corners)
+    {
+        corners = null;
+        if (!NavMesh.CalculatePath(from, to, NavMesh.AllAreas, path)) return false;
+        if (path.status != NavMeshPathStatus.PathComplete) return false;
+        corners = path.corners;
+        return corners != null && corners.Length >= 2;
+    }
+
+    float PolylineLength(IList<Vector3> pts)
+    {
+        float d = 0f;
+        for (int i = 1; i < pts.Count; i++)
+            d += Vector3.Distance(pts[i - 1], pts[i]);
+        return d;
+    }
+
+    bool TryGetElevatorDoors(ElevatorShaft elev, int floorIndex, out Transform[] doors)
+    {
+        doors = null;
+        if (elev == null || elev.stops == null) return false;
+
+        for (int i = 0; i < elev.stops.Length; i++)
+        {
+            var s = elev.stops[i];
+            if (s != null && s.floorIndex == floorIndex &&
+                s.doorPoints != null && s.doorPoints.Length > 0)
+            {
+                doors = s.doorPoints;
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    List<Vector3> BuildElevatorRide(ElevatorShaft elev, Vector3 doorA, Vector3 doorB)
+    {
+        var pts = new List<Vector3>(3);
+
+        if (forceVerticalAtShaftCenter && elev != null && elev.shaftCenterXZ != null)
+        {
+            Vector3 shaft = elev.shaftCenterXZ.position;
+            Vector3 a0 = new Vector3(shaft.x, doorA.y, shaft.z);
+            Vector3 b0 = new Vector3(shaft.x, doorB.y, shaft.z);
+
+            pts.Add(doorA);
+            if ((a0 - doorA).sqrMagnitude > 0.0001f) pts.Add(a0);
+            pts.Add(b0);
+            if ((doorB - b0).sqrMagnitude > 0.0001f) pts.Add(doorB);
+            return pts;
+        }
+
+        pts.Add(doorA);
+        Vector3 up = new Vector3(doorA.x, doorB.y, doorA.z);
+        if ((up - doorA).sqrMagnitude > 0.0001f) pts.Add(up);
+        if ((doorB - pts[pts.Count - 1]).sqrMagnitude > 0.0001f) pts.Add(doorB);
+        return pts;
+    }
+
+    bool TryBuildBestRoute(Vector3 start, int startFloor, Vector3 end, int endFloor, out Vector3[] bestCorners)
+    {
+        bestCorners = null;
+
+        Vector3[] stairsCorners = null;
+        float stairsTime = float.PositiveInfinity;
+
+        if (TryCalculateNavCorners(start, end, out stairsCorners))
+        {
+            float stairsLen = PolylineLength(stairsCorners);
+            stairsTime = stairsLen / Mathf.Max(0.01f, walkSpeed);
+        }
+
+        if (startFloor == endFloor)
+        {
+            if (stairsCorners != null)
+            {
+                bestCorners = stairsCorners;
+                return true;
+            }
+            return false;
+        }
+
+        float bestElevTime = float.PositiveInfinity;
+        List<Vector3> bestElevPts = null;
+
+        if (elevators != null)
+        {
+            for (int e = 0; e < elevators.Length; e++)
+            {
+                var elev = elevators[e];
+                if (elev == null) continue;
+
+                if (!TryGetElevatorDoors(elev, startFloor, out var startDoors)) continue;
+                if (!TryGetElevatorDoors(elev, endFloor, out var endDoors)) continue;
+
+                for (int ai = 0; ai < startDoors.Length; ai++)
+                {
+                    var dA = startDoors[ai];
+                    if (dA == null) continue;
+
+                    Vector3 doorA = dA.position;
+                    if (!NavMesh.SamplePosition(doorA, out var hitA, 2f, NavMesh.AllAreas)) continue;
+                    doorA = hitA.position;
+
+                    if (!TryCalculateNavCorners(start, doorA, out var aCorners)) continue;
+
+                    for (int bi = 0; bi < endDoors.Length; bi++)
+                    {
+                        var dB = endDoors[bi];
+                        if (dB == null) continue;
+
+                        Vector3 doorB = dB.position;
+                        if (!NavMesh.SamplePosition(doorB, out var hitB, 2f, NavMesh.AllAreas)) continue;
+                        doorB = hitB.position;
+
+                        if (!TryCalculateNavCorners(doorB, end, out var bCorners)) continue;
+
+                        var pts = new List<Vector3>(aCorners.Length + bCorners.Length + 6);
+
+                        for (int i = 0; i < aCorners.Length; i++) pts.Add(aCorners[i]);
+
+                        var ride = BuildElevatorRide(elev, doorA, doorB);
+
+                        if (pts.Count > 0 && ride.Count > 0 && (pts[pts.Count - 1] - ride[0]).sqrMagnitude < 0.0001f)
+                            ride.RemoveAt(0);
+                        pts.AddRange(ride);
+
+                        int bStart = 0;
+                        if (pts.Count > 0 && bCorners.Length > 0 && (pts[pts.Count - 1] - bCorners[0]).sqrMagnitude < 0.0001f)
+                            bStart = 1;
+                        for (int i = bStart; i < bCorners.Length; i++) pts.Add(bCorners[i]);
+
+                        float walkLen = PolylineLength(aCorners) + PolylineLength(bCorners);
+                        float walkTime = walkLen / Mathf.Max(0.01f, walkSpeed);
+
+                        float verticalMeters = Mathf.Abs(doorB.y - doorA.y);
+                        float rideTime = verticalMeters / Mathf.Max(0.01f, elevatorSpeed);
+
+                        float totalTime = walkTime + elevatorAvgWaitSeconds + rideTime;
+
+                        if (totalTime < bestElevTime)
+                        {
+                            bestElevTime = totalTime;
+                            bestElevPts = pts;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (stairsTime <= bestElevTime)
+        {
+            if (stairsCorners != null)
+            {
+                bestCorners = stairsCorners;
+                return true;
+            }
+        }
+
+        else
+        {
+            if (bestElevPts != null && bestElevPts.Count >= 2)
+            {
+                bestCorners = bestElevPts.ToArray();
+                return true;
+            }
+        }
+
+        if (stairsCorners != null) { bestCorners = stairsCorners; return true; }
+        if (bestElevPts != null) { bestCorners = bestElevPts.ToArray(); return true; }
+
+        return false;
     }
 
     // =========================================================

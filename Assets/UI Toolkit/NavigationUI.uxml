@@ -14,7 +14,7 @@
             </ui:VisualElement>
 
             <ui:VisualElement class="topbar__center">
-                <ui:Label class="topbar__title" text="Bản đồ 3D Bệnh Viện Nội Tiết" />
+                <ui:Label class="topbar__title" text="Bản đồ 3D Bệnh Viện Nội Tiết Trung Ương 2" />
                 <ui:Label class="topbar__subtitle" text="Hệ thống chỉ đường thông minh 3D - Tìm đường đi, tìm phòng khám dễ dàng" />
             </ui:VisualElement>
 
