@@ -12,8 +12,9 @@
 
 /* Full-screen HUD root */
 .hud {
-    position: absolute;
-    left: 0; right: 0; top: 0; bottom: 0;
+    position: relative;
+    width: 100%;
+    height: 100%;
 }
 
 /* Content under the top bar */
@@ -36,10 +37,8 @@
     align-items: center;
     justify-content: space-between;
 
-    /* solid, but with depth */
     background-color: rgb(255,255,255);
 
-    /* crisp divider + soft shadow */
     border-bottom-width: 1px;
     border-bottom-color: rgb(226,232,240);
     box-shadow: 0px 10px 26px rgba(0,0,0,0.10);
@@ -49,7 +48,7 @@
 
 /* Side blocks keep center perfectly centered */
 .topbar__side {
-    width: 180px;      /* a bit wider so logos feel comfy */
+    width: 180px;
     height: 100%;
     flex-shrink: 0;
 
@@ -107,10 +106,8 @@
     border-radius: 16px;
     padding: 18px;
 
-    /* softer, more modern shadow */
     box-shadow: 0px 14px 34px rgba(0,0,0,0.14);
 
-    /* optional: subtle border makes it feel crisp */
     border-width: 1px;
     border-color: rgb(226,232,240);
 }
@@ -131,11 +128,42 @@
     color: rgb(15,23,42);
 }
 
-/* Chevron nicer alignment */
-.chevron {
-    unity-text-align: middle-right;
-    color: rgb(100,116,139);
-    font-size: 16px;
+/* Bigger circular icon button (PNG logo) */
+.iconBtn {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+
+    justify-content: center;
+    align-items: center;
+
+    background-color: rgb(241,245,249);
+    border-width: 1px;
+    border-color: rgb(226,232,240);
+
+    padding: 0px;
+    cursor: pointer;
+
+    /* icon from Resources */
+    background-image: resource("logo_noitiet");
+    background-repeat: no-repeat;
+    background-position: center;
+
+    /* Bigger icon.
+       - Use fixed size for PNG so it actually looks big.
+       - If it ever crops weirdly, switch to "contain" instead. */
+    background-size: 26px 26px;
+
+    transition-property: background-color;
+    transition-duration: 100ms;
+
+    box-shadow: 0px 6px 14px rgba(0,0,0,0.10);
+}
+
+.iconBtn:hover { background-color: rgb(226,232,240); }
+.iconBtn:active {
+    background-color: rgb(203,213,225);
+    box-shadow: 0px 3px 8px rgba(0,0,0,0.10);
 }
 
 /* Collapsible behavior */
@@ -143,9 +171,19 @@
     overflow: hidden;
 }
 
-/* When collapsed */
+/* When collapsed: only hide content (header+icon remain visible) */
 .card--collapsed .cardContent {
     display: none;
+}
+
+/* Helps initial collapsed state in UXML */
+.cardContent--collapsed {
+    display: none;
+}
+
+/* Optional: remove extra empty space under header when collapsed */
+.card--collapsed .header {
+    margin-bottom: 0px;
 }
 
 
@@ -269,4 +307,48 @@
     background-color: rgb(226,232,240);
     margin-top: 16px;
     margin-bottom: 6px;
+}
+
+/* ---------------------------
+   Modal
+---------------------------- */
+
+.overlay {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.65);
+    z-index: 9999;
+}
+
+.modal {
+    width: 560px;
+    max-width: 92%;
+    padding: 18px;
+    border-radius: 14px;
+    background-color: rgb(25, 25, 25);
+}
+
+.modal-title {
+    font-size: 20px;
+    unity-font-style: bold;
+    margin-bottom: 10px;
+    color: white;
+}
+
+.modal-body {
+    white-space: normal;
+    color: rgb(220, 220, 220);
+    margin-bottom: 14px;
+}
+
+.modal-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
+/* toggle */
+.hidden {
+    display: none;
 }

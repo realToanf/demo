@@ -24,10 +24,10 @@ public class CameraController : MonoBehaviour
     public float fpsLookSpeed = 6f;
 
     [Header("Camera Zone Limits")]
-    public BoxCollider cameraZone;        
-    public float zonePadding = 0.0f;   
-    public bool clampPivotToZone = true;    
-    public bool clampHeightToZone = true;   
+    public BoxCollider cameraZone;
+    public float zonePadding = 0.0f;
+    public bool clampPivotToZone = true;
+    public bool clampHeightToZone = true;
 
     [Header("UI Input Block")]
     public bool blockInputByUI = false;
@@ -63,8 +63,8 @@ public class CameraController : MonoBehaviour
     public float relockAfterIdleSeconds = 5f;  // after user stops interacting, lock back to pivot
     public bool enableIdleSpin = true;
     public float idleSpinDelay = 0.5f;         // after locked, how long before spin starts
-    public float idleSpinSpeed = 8.0f;         // degrees/sec
-    public float idleSpinRamp = 3.0f;          // blend in/out speed
+    public float idleSpinSpeed = 8.0f;          // degrees/sec
+    public float idleSpinRamp = 3.0f;           // blend in/out speed
 
     bool lockCamera = false;
 
@@ -84,6 +84,14 @@ public class CameraController : MonoBehaviour
 
     // Pivot lock state
     bool pivotLocked = false;
+    bool followPivotTarget = true;
+
+    // =========================
+    // ADDED: manual (world-space) pivot lock override
+    // - lets you lock to destination without changing pivotTarget (spin/refocus target)
+    // =========================
+    bool manualPivotLock = false;
+    Vector3 manualPivot;
 
     float lastTouchDist;
     Vector2 lastTwoFingerCenter;
@@ -105,6 +113,7 @@ public class CameraController : MonoBehaviour
         if (pivotTarget != null)
         {
             birdPivot = pivotTarget.position + pivotOffset;
+            followPivotTarget = true;
             pivotLocked = true;
         }
         else
@@ -148,7 +157,6 @@ public class CameraController : MonoBehaviour
         else
         {
             // If UI is blocking, DO NOT treat that as "user is idle"
-            // (otherwise hovering UI can trigger relock/idle spin weirdness).
             if (!inputBlocked)
             {
                 // No input: if idle long enough, instantly re-lock to pivot target
@@ -162,20 +170,27 @@ public class CameraController : MonoBehaviour
             else
             {
                 // Optional: keep lastInputTime "fresh" while hovering UI
-                // so UI hovering doesn't trigger idle relock/spin.
                 lastInputTime = Time.time;
             }
         }
 
-        // While locked, keep following pivot target (even if UI blocks input)
-        if (mode == CameraMode.BirdEye && pivotLocked && pivotTarget != null)
+        if (mode == CameraMode.BirdEye && pivotLocked)
         {
-            birdPivot = pivotTarget.position + pivotOffset;
+            if (manualPivotLock)
+            {
+                birdPivot = manualPivot;
+            }
+            else if (followPivotTarget && pivotTarget != null)
+            {
+                birdPivot = pivotTarget.position + pivotOffset;
+            }
+
             transform.position = birdPivot + orbitOffset;
             transform.LookAt(birdPivot);
 
             birdDist = orbitOffset.magnitude;
         }
+
 
         // Controls should be blocked when UI is hovered
         if (!inputBlocked)
@@ -197,6 +212,11 @@ public class CameraController : MonoBehaviour
     {
         pivotLocked = false;
 
+        // =========================
+        // ADDED: release manual destination lock on any user interaction
+        // =========================
+        manualPivotLock = false;
+
         birdDist = Vector3.Distance(transform.position, birdPivot);
         orbitOffset = transform.position - birdPivot;
 
@@ -208,7 +228,13 @@ public class CameraController : MonoBehaviour
     {
         if (pivotTarget == null) return;
 
+        // =========================
+        // ADDED: relocking to pivotTarget clears manual destination lock
+        // =========================
+        manualPivotLock = false;
+
         birdPivot = pivotTarget.position + pivotOffset;
+        followPivotTarget = true;
 
         // capture current orbit relative to the pivot
         orbitOffset = transform.position - birdPivot;
@@ -290,9 +316,13 @@ public class CameraController : MonoBehaviour
 
         if (mode == CameraMode.BirdEye)
         {
+            // entering bird-eye: default back to pivotTarget-follow unless you explicitly set manualPivot elsewhere
+            manualPivotLock = false;
+
             if (pivotTarget != null)
             {
                 birdPivot = pivotTarget.position + pivotOffset;
+                followPivotTarget = true;
                 pivotLocked = true;
             }
             else
@@ -313,6 +343,7 @@ public class CameraController : MonoBehaviour
         {
             // Leaving BirdEye
             pivotLocked = false;
+            manualPivotLock = false;
             idleSpinWeight = 0f;
         }
     }
@@ -355,7 +386,7 @@ public class CameraController : MonoBehaviour
 
                 Vector3 move = (-right * delta.x - forward * delta.y) * panSpeed;
                 transform.position += move;
-                birdPivot += move;  
+                birdPivot += move;
 
                 orbitOffset = transform.position - birdPivot;
                 birdDist = orbitOffset.magnitude;
@@ -469,7 +500,7 @@ public class CameraController : MonoBehaviour
 
                     Vector3 move = (-right * centerDelta.x - forward * centerDelta.y) * touchPanMultiplier * Time.deltaTime;
                     transform.position += move;
-                    birdPivot += move;  
+                    birdPivot += move;
 
                     orbitOffset = transform.position - birdPivot;
                     birdDist = orbitOffset.magnitude;
@@ -591,23 +622,28 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        Vector3 startPos = transform.position;
-        Quaternion startRot = transform.rotation;
+        // =========================
+        // FIXED: overview interpolation was a no-op before
+        // =========================
+        Vector3 fromPos = transform.position;
+        Quaternion fromRot = transform.rotation;
 
         PositionSmartOverview(corners);
-        Vector3 targetPos = transform.position;
-        Quaternion targetRot = transform.rotation;
+        Vector3 toPos = transform.position;
+        Quaternion toRot = transform.rotation;
 
-        startPos = transform.position;
-        startRot = transform.rotation;
+        // revert so we can lerp from -> to
+        transform.position = fromPos;
+        transform.rotation = fromRot;
+
         float t = 0f;
         while (t < 1f)
         {
-            t += Time.deltaTime * (moveSpeed * 0.5f);
+            t += Time.deltaTime * (moveSpeed * 0.3f);
             float a = Mathf.Clamp01(t);
 
-            transform.position = Vector3.Lerp(startPos, targetPos, a);
-            transform.rotation = Quaternion.Slerp(startRot, targetRot, a);
+            transform.position = Vector3.Lerp(fromPos, toPos, a);
+            transform.rotation = Quaternion.Slerp(fromRot, toRot, a);
 
             yield return null;
         }
@@ -618,15 +654,20 @@ public class CameraController : MonoBehaviour
         lastInputTime = Time.time;
         idleSpinWeight = 0f;
 
-        pivotLocked = false;
-        if (pivotTarget != null)
-            birdPivot = pivotTarget.position + pivotOffset;
+        // Keep the route-center pivot that PositionSmartOverview() already set.
+        // Stay locked so orbit/idle spin rotates around center-of-route.
+        manualPivotLock = false;
+        pivotLocked = true;
+        followPivotTarget = false;
 
+        // rebuild orbit state coherently
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
+        transform.LookAt(birdPivot);
 
         lastInputTime = Time.time;
         idleSpinWeight = 0f;
+
         moveRoutine = null;
     }
 
@@ -642,8 +683,12 @@ public class CameraController : MonoBehaviour
         if (target == null) return;
 
         mode = CameraMode.BirdEye;
-        
+
         birdPivot = target.position + pivotOffset;
+        followPivotTarget = true;
+
+        // SnapToBirdEye is an explicit lock: do NOT use manual destination lock here
+        manualPivotLock = false;
 
         currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
@@ -723,6 +768,9 @@ public class CameraController : MonoBehaviour
         mode = CameraMode.BirdEye;
         lockCamera = false;
 
+        // Refocus should not be affected by manual destination lock
+        manualPivotLock = false;
+
         transform.position = refocusPose.position;
 
         Vector3 lookPoint =
@@ -730,6 +778,7 @@ public class CameraController : MonoBehaviour
             (idleSnapTarget != null) ? (idleSnapTarget.position + pivotOffset) :
             birdPivot;
 
+        birdPivot = lookPoint;
         transform.LookAt(lookPoint);
 
         // keep orbit state coherent after refocus
@@ -758,7 +807,7 @@ public class CameraController : MonoBehaviour
         Vector3 ext = b.extents * boundsPadding;
 
         // 2) Required height to fit route in FOV
-        float vertFovRad  = cam.fieldOfView * Mathf.Deg2Rad;
+        float vertFovRad = cam.fieldOfView * Mathf.Deg2Rad;
         float horizFovRad = 2f * Mathf.Atan(Mathf.Tan(vertFovRad * 0.5f) * cam.aspect);
 
         float halfWidth = ext.x;
@@ -778,7 +827,7 @@ public class CameraController : MonoBehaviour
         Quaternion yawRot = Quaternion.Euler(0f, overviewYaw, 0f);
         Vector3 forwardDir = yawRot * Vector3.forward;
 
-        float camDistance    = baseHeight / Mathf.Sin(pitchRad);
+        float camDistance = baseHeight / Mathf.Sin(pitchRad);
         float horizontalDist = camDistance * Mathf.Cos(pitchRad);
         float verticalOffset = camDistance * Mathf.Sin(pitchRad);
 
@@ -834,9 +883,10 @@ public class CameraController : MonoBehaviour
                 transform.rotation = Quaternion.Euler(89f, 0f, 0f);
             }
         }
-        
+
         // keep bird-eye orbit in sync
         birdPivot = center;
+        followPivotTarget = false;
         orbitOffset = transform.position - birdPivot;
         birdDist = orbitOffset.magnitude;
     }

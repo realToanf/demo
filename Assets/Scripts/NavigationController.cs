@@ -56,6 +56,10 @@ public class NavigationController : MonoBehaviour
     public float elevatorAvgWaitSeconds = 12f;
     public bool forceVerticalAtShaftCenter = true;
 
+    [Header("Auto Elevator Setup (optional)")]
+    public Transform elevatorsRoot; // assign ElevatorsRoot
+    public bool autoBuildElevatorsOnStart = true;
+
     [Serializable]
     public class ElevatorStop
     {
@@ -194,6 +198,7 @@ public class NavigationController : MonoBehaviour
         yield return null;
 
         AutoAssignIfNull();
+        if (autoBuildElevatorsOnStart) AutoBuildElevators();
 
         if (floorsRoot == null)
         {
@@ -401,11 +406,49 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloorFromDropdown(int dropdownIndex)
     {
-        if (IsRouteActive || isNavigating) return;
+        if (isNavigating) return; // CHỈ khóa khi camera đang chạy
 
         dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
         SelectedFloorDropdownIndex = dropdownIndex;
 
+        // =========================
+        // Cho phép chọn tầng khi route active (SAU KHI camera xong)
+        // =========================
+        if (IsRouteActive)
+        {
+            // chỉ áp dụng cho cross-floor
+            if (!navIsCrossFloor || navFromFloor < 0 || navToFloor < 0)
+                return;
+
+            if (dropdownIndex == 0)
+            {
+                // "Tất cả các tầng" => chỉ show 2 tầng liên quan route (không show mọi tầng)
+                ShowAllFloors = false;
+
+                visibleFloors.Clear();
+                visibleFloors.Add(navFromFloor);
+                visibleFloors.Add(navToFloor);
+                ApplyVisibleFloors();
+
+                ApplyNavTransparency(true);
+
+                FloorsChanged?.Invoke();
+                ActiveFloorChanged?.Invoke();
+                return;
+            }
+
+            int floorIndex = dropdownIndex - 1;
+
+            // chỉ cho chọn 1 trong 2 tầng route
+            if (floorIndex == navFromFloor || floorIndex == navToFloor)
+                FocusFloorForActiveRoute(floorIndex);
+
+            return;
+        }
+
+        // =========================
+        // Normal mode (route không active)
+        // =========================
         if (dropdownIndex == 0)
         {
             // Show all floors, BUT NO transparency
@@ -417,6 +460,7 @@ public class NavigationController : MonoBehaviour
             SetFloor(dropdownIndex - 1);
         }
     }
+
 
     public void SetFloorVisible(int index, bool visible)
     {
@@ -1431,5 +1475,92 @@ public class NavigationController : MonoBehaviour
             t = t.parent;
         }
         return navOtherAlpha;
+    }
+
+    void FocusFloorForActiveRoute(int floorIndex)
+    {
+        floorIndex = Mathf.Clamp(floorIndex, 0, floors.Count - 1);
+
+        ShowAllFloors = false;
+        ActiveFloorIndex = floorIndex;
+
+        visibleFloors.Clear();
+        visibleFloors.Add(floorIndex);
+        ApplyVisibleFloors();
+
+        // route đang active => giữ transparency cho navigation
+        ApplyNavTransparency(true);
+
+        SelectedFloorDropdownIndex = floorIndex + 1;
+
+        ActiveFloorChanged?.Invoke();
+        FloorsChanged?.Invoke();
+    }
+
+    void AutoBuildElevators()
+    {
+        if (!elevatorsRoot) return;
+
+        var list = new List<ElevatorShaft>();
+
+        for (int s = 0; s < elevatorsRoot.childCount; s++)
+        {
+            var shaftTf = elevatorsRoot.GetChild(s);
+            if (!shaftTf) continue;
+
+            var shaft = new ElevatorShaft
+            {
+                name = shaftTf.name,
+                shaftCenterXZ = shaftTf.Find("CenterXZ"),
+            };
+
+            var stopsRoot = shaftTf.Find("Stops");
+            if (!stopsRoot) continue;
+
+            var stops = new List<ElevatorStop>();
+
+            for (int i = 0; i < stopsRoot.childCount; i++)
+            {
+                var floorStop = stopsRoot.GetChild(i); // e.g. "F0", "F1"...
+                int floorIndex = ParseFloorIndex(floorStop.name);
+                if (floorIndex < 0) continue;
+
+                var doors = new List<Transform>();
+                for (int d = 0; d < floorStop.childCount; d++)
+                {
+                    var door = floorStop.GetChild(d);
+                    if (door) doors.Add(door);
+                }
+
+                if (doors.Count == 0) continue;
+
+                stops.Add(new ElevatorStop
+                {
+                    floorIndex = floorIndex,
+                    doorPoints = doors.ToArray()
+                });
+            }
+
+            shaft.stops = stops.ToArray();
+            list.Add(shaft);
+        }
+
+        elevators = list.ToArray();
+    }
+
+    static int ParseFloorIndex(string name)
+    {
+        // Accept "F0", "f2", "Floor3" etc.
+        name = name.Trim();
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (char.IsDigit(name[i]))
+            {
+                if (int.TryParse(name.Substring(i), out int idx))
+                    return idx;
+                break;
+            }
+        }
+        return -1;
     }
 }

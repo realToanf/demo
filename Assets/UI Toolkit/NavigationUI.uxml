@@ -1,6 +1,4 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
-    <!-- HUD + TopBar styles -->
-    <ui:Style src="project://database/Assets/UI Toolkit/Hud.uss" />
 
     <!-- Card styles -->
     <ui:Style src="project://database/Assets/UI Toolkit/NavigationUI.uss?fileID=7433441132597879392&amp;guid=7bb56356fbf6e144aa85a6694b08e62c&amp;type=3#NavigationUI"/>
@@ -26,13 +24,17 @@
         <!-- CONTENT AREA (everything below the bar) -->
         <ui:VisualElement class="content">
             <ui:VisualElement class="root">
-                <ui:VisualElement class="card" name="navCard">
+
+                <!-- Start collapsed by default via class -->
+                <ui:VisualElement class="card card--collapsed" name="navCard">
+
                     <ui:VisualElement class="header" name="cardHeader">
                         <ui:Label text="Chỉ đường" class="title"/>
-                        <ui:Label name="chevron" text="▾" class="chevron" />
+                        <ui:Button name="collapseBtn" class="iconBtn" focusable="false" />
                     </ui:VisualElement>
 
-                    <ui:VisualElement name="cardContent" class="cardContent">
+                    <!-- Start hidden as well (belt + suspenders) -->
+                    <ui:VisualElement name="cardContent" class="cardContent cardContent--collapsed">
                         <ui:VisualElement class="field">
                             <ui:VisualElement class="labelRow">
                                 <ui:Label text="Bắt đầu từ phòng" class="label" style="font-size: 15px;"/>
@@ -60,9 +62,26 @@
                         <ui:Button name="modeBtn" text="Chuyển chế độ" class="modeBtn" />
                         <ui:Button name="refocusBtn" text="Quay lại vị trí ban đầu" class="refocus" />
                     </ui:VisualElement>
+
                 </ui:VisualElement>
             </ui:VisualElement>
-
         </ui:VisualElement>
+
+        <ui:VisualElement name="instructionOverlay" class="overlay hidden">
+            <ui:VisualElement name="instructionModal" class="modal">
+                <ui:Label class="modal-title" text="Hướng dẫn sử dụng" />
+
+                <ui:Label name="instructionBody" class="modal-body"
+                        text="• Chọn 'Bắt đầu từ phòng' và 'Tới phòng'
+        • Nhấn 'Bắt đầu đi' để xem đường đi
+        • Chọn tầng để xem các phòng
+        • 'Quay lại vị trí ban đầu' để reset góc nhìn" />
+
+                <ui:VisualElement class="modal-actions">
+                    <ui:Button name="instructionCloseBtn" text="Đã hiểu" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
     </ui:VisualElement>
 </ui:UXML>

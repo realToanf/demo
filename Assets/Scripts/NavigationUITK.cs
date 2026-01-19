@@ -17,7 +17,6 @@ public class NavigationUITK : MonoBehaviour
     DropdownField toDropdown;
     DropdownField floorDropdown;
     Button navigateBtn;
-
     Button refocusBtn;
 
     bool isNavigating = false;
@@ -26,11 +25,15 @@ public class NavigationUITK : MonoBehaviour
     const string TO_PLACEHOLDER   = "Chọn điểm đến";
 
     // --- UI refs ---
+    VisualElement rootVE;
+    IPanel panel;
+
     VisualElement card;
     VisualElement cardHeader;
     VisualElement cardContent;
     VisualElement topbar;
-    Label chevron;
+
+    Button collapseBtn;
     bool isCollapsed = false;
 
     // Hover flags (event-driven, reliable)
@@ -38,11 +41,29 @@ public class NavigationUITK : MonoBehaviour
     bool overTopbar = false;
 
     IVisualElementScheduledItem uiPickScheduler;
-    IPanel panel;
-    VisualElement rootVE;
 
     [Header("Debug")]
     public bool logPicked = false;
+
+    // Keep delegates so we can unsubscribe properly
+    EventCallback<ClickEvent> headerClickCb;
+    Action collapseBtnClickAction;
+
+    // ---------- Instruction Modal ----------
+    [Header("Instruction Modal")]
+    [SerializeField] bool showInstructionsOnlyOnce = true;
+
+    VisualElement instructionOverlay;
+    Button instructionCloseBtn;
+    Button helpBtn; // optional
+
+    bool isModalOpen = false;
+
+    const string INSTR_SEEN_KEY = "INSTRUCTIONS_SEEN";
+
+    // Keep delegates for unsubscribe
+    Action instructionCloseAction;
+    Action helpBtnAction;
 
     void Start()
     {
@@ -63,8 +84,10 @@ public class NavigationUITK : MonoBehaviour
         panel  = root.panel;
 
         // Prevent full-screen root from being picked everywhere.
-        // (We do NOT rely on Pick for hover on card/topbar anymore.)
         root.pickingMode = PickingMode.Ignore;
+
+        // ---------- Instruction Modal Init (do early) ----------
+        InitInstructionModal(root);
 
         // --- navCard ---
         card = root.Q<VisualElement>("navCard");
@@ -86,26 +109,39 @@ public class NavigationUITK : MonoBehaviour
             topbar.pickingMode = PickingMode.Position;
         }
 
-        // Track hover using pointer enter/leave (more reliable than panel.Pick for this)
+        ForcePickableTree(card);
+        ForcePickableTree(topbar);
+
         RegisterHoverTracking();
 
         // Start scheduler AFTER we have rootVE.
         uiPickScheduler = rootVE.schedule.Execute(UpdateCameraUiBlock).Every(16);
 
+        // --- Collapsible refs ---
         cardHeader  = card.Q<VisualElement>("cardHeader");
         cardContent = card.Q<VisualElement>("cardContent");
-        chevron     = card.Q<Label>("chevron");
+        collapseBtn = card.Q<Button>("collapseBtn");
 
         if (cardHeader != null && cardContent != null)
         {
-            SetCollapsed(false);
-
-            cardHeader.RegisterCallback<ClickEvent>(_ =>
-            {
-                SetCollapsed(!isCollapsed);
-            });
+            // Header click toggles
+            headerClickCb = _ => SetCollapsed(!isCollapsed);
+            cardHeader.RegisterCallback(headerClickCb);
         }
 
+        if (collapseBtn != null)
+        {
+            // Stop bubbling so button click doesn't also trigger header click
+            collapseBtn.RegisterCallback<ClickEvent>(e => e.StopPropagation());
+
+            collapseBtnClickAction = () => SetCollapsed(!isCollapsed);
+            collapseBtn.clicked += collapseBtnClickAction;
+        }
+
+        // ✅ Start collapsed
+        SetCollapsed(true);
+
+        // --- Other UI refs ---
         fromDropdown  = card.Q<DropdownField>("fromDropdown");
         toDropdown    = card.Q<DropdownField>("toDropdown");
         floorDropdown = card.Q<DropdownField>("floorDropdown");
@@ -156,9 +192,72 @@ public class NavigationUITK : MonoBehaviour
         RefreshRefocusButtonState();
     }
 
+    void InitInstructionModal(VisualElement root)
+    {
+        instructionOverlay = root.Q<VisualElement>("instructionOverlay");
+        instructionCloseBtn = root.Q<Button>("instructionCloseBtn");
+        helpBtn = root.Q<Button>("helpBtn"); // optional button in your UXML
+
+        if (instructionOverlay == null)
+        {
+            // It's optional, but you asked for it. Log so you know you missed UXML.
+            Debug.LogWarning("NavigationUITK: instructionOverlay not found (instruction modal disabled).");
+            return;
+        }
+
+        // Root is PickingMode.Ignore => overlay MUST be pickable to intercept events.
+        instructionOverlay.pickingMode = PickingMode.Position;
+
+        // Extra safety: stop pointer events from going to UI behind
+        instructionOverlay.RegisterCallback<PointerDownEvent>(e => e.StopPropagation());
+        instructionOverlay.RegisterCallback<PointerUpEvent>(e => e.StopPropagation());
+        instructionOverlay.RegisterCallback<PointerMoveEvent>(e => e.StopPropagation());
+
+        instructionCloseAction = CloseInstructions;
+        if (instructionCloseBtn != null)
+            instructionCloseBtn.clicked += instructionCloseAction;
+
+        if (helpBtn != null)
+        {
+            helpBtnAction = OpenInstructions;
+            helpBtn.clicked += helpBtnAction;
+        }
+
+        // Show on first run (optional)
+        bool seen = PlayerPrefs.GetInt(INSTR_SEEN_KEY, 0) == 1;
+        if (!showInstructionsOnlyOnce || !seen)
+            OpenInstructions();
+        else
+            instructionOverlay.AddToClassList("hidden");
+    }
+
+    public void OpenInstructions()
+    {
+        if (instructionOverlay == null) return;
+
+        isModalOpen = true;
+        instructionOverlay.RemoveFromClassList("hidden");
+
+        // Optional: if you want to lock dropdown interaction behind modal:
+        // SetControlsLocked(true);
+    }
+
+    public void CloseInstructions()
+    {
+        if (instructionOverlay == null) return;
+
+        isModalOpen = false;
+        instructionOverlay.AddToClassList("hidden");
+
+        PlayerPrefs.SetInt(INSTR_SEEN_KEY, 1);
+        PlayerPrefs.Save();
+
+        // Optional:
+        // SetControlsLocked(isNavigating);
+    }
+
     void RegisterHoverTracking()
     {
-        // TrickleDown ensures the container gets events from its children (labels, images, etc.)
         if (card != null)
         {
             card.RegisterCallback<PointerEnterEvent>(_ => overCard = true, TrickleDown.TrickleDown);
@@ -176,6 +275,19 @@ public class NavigationUITK : MonoBehaviour
     {
         if (cam != null) cam.blockInputByUI = false;
         uiPickScheduler?.Pause();
+
+        // Unregister UI callbacks cleanly
+        if (cardHeader != null && headerClickCb != null)
+            cardHeader.UnregisterCallback(headerClickCb);
+
+        if (collapseBtn != null && collapseBtnClickAction != null)
+            collapseBtn.clicked -= collapseBtnClickAction;
+
+        if (instructionCloseBtn != null && instructionCloseAction != null)
+            instructionCloseBtn.clicked -= instructionCloseAction;
+
+        if (helpBtn != null && helpBtnAction != null)
+            helpBtn.clicked -= helpBtnAction;
 
         if (nav == null) return;
 
@@ -351,15 +463,24 @@ public class NavigationUITK : MonoBehaviour
         if (cardContent != null)
             cardContent.style.display = isCollapsed ? DisplayStyle.None : DisplayStyle.Flex;
 
-        if (chevron != null)
-            chevron.text = collapsed ? "▸" : "▾";
+        if (card != null)
+        {
+            if (isCollapsed) card.AddToClassList("card--collapsed");
+            else card.RemoveFromClassList("card--collapsed");
+        }
     }
 
     void UpdateCameraUiBlock()
     {
         if (cam == null || uiDocument == null) return;
 
-        // Lazy init panel
+        // Modal open => ALWAYS block camera input
+        if (isModalOpen)
+        {
+            cam.blockInputByUI = true;
+            return;
+        }
+
         if (panel == null)
         {
             var root = uiDocument.rootVisualElement;
@@ -376,7 +497,7 @@ public class NavigationUITK : MonoBehaviour
         if (capturingHandler != null)
             block = true;
 
-        // B) Hover flags (topbar/card) - reliable
+        // B) Hover flags (topbar/card)
         if (!block && (overCard || overTopbar))
             block = true;
 
@@ -429,5 +550,15 @@ public class NavigationUITK : MonoBehaviour
         }
 
         return false;
+    }
+
+    static void ForcePickableTree(VisualElement ve)
+    {
+        if (ve == null) return;
+
+        ve.pickingMode = PickingMode.Position;
+
+        foreach (var child in ve.Children())
+            ForcePickableTree(child);
     }
 }

@@ -10529,6 +10529,11 @@ MonoBehaviour:
     m_RotationOrder: 4
   revealSpeed: 12
   lineHeightOffset: 0.05
+  elevators: []
+  walkSpeed: 1.4
+  elevatorSpeed: 2.5
+  elevatorAvgWaitSeconds: 12
+  forceVerticalAtShaftCenter: 1
   enableTextureScroll: 0
   textureScrollSpeed: 1
   makeFloorsTransparentInNav: 1
@@ -11125,8 +11130,8 @@ Transform:
   m_GameObject: {fileID: 1212140254}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 33.2, y: 51.8, z: -52.4}
-  m_LocalScale: {x: 211.56232, y: 103.51266, z: 184.70631}
+  m_LocalPosition: {x: 28.2, y: 151.9, z: -45.3}
+  m_LocalScale: {x: 146.88896, y: 297.9248, z: 130.8219}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -12954,9 +12959,6 @@ MonoBehaviour:
   gestureThreshold: 5
   pivotTarget: {fileID: 1708817627}
   pivotOffset: {x: 0, y: 0, z: 0}
-  infraRoot: {fileID: 603212327}
-  showroomLockPivotToInfra: 1
-  showroomAllowPan: 1
   relockAfterIdleSeconds: 5
   enableIdleSpin: 1
   idleSpinDelay: 0.5
