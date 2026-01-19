@@ -193,6 +193,7 @@ public class NavigationUITK : MonoBehaviour
             instructionBody.text =
                 "• Chọn “Bắt đầu từ phòng” và “Tới phòng”\n" +
                 "• Nhấn “Bắt đầu đi” để xem đường đi\n" +
+                "• Nhấn “Hủy chỉ đường” để ngừng vẽ đường đi" +
                 "• Chọn tầng để xem các phòng\n" +
                 "• “Quay lại vị trí ban đầu” để reset góc nhìn";
         }

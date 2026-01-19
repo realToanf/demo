@@ -53,7 +53,7 @@ public class NavigationController : MonoBehaviour
     [Header("Routing Speeds (seconds-based)")]
     public float walkSpeed = 1.4f;
     public float elevatorSpeed = 2.5f;
-    public float elevatorAvgWaitSeconds = 12f;
+    public float elevatorAvgWaitSeconds = 5f;
     public bool forceVerticalAtShaftCenter = true;
 
     [Header("Auto Elevator Setup (optional)")]
@@ -198,7 +198,6 @@ public class NavigationController : MonoBehaviour
         yield return null;
 
         AutoAssignIfNull();
-        if (autoBuildElevatorsOnStart) AutoBuildElevators();
 
         if (floorsRoot == null)
         {
@@ -236,6 +235,7 @@ public class NavigationController : MonoBehaviour
         line.positionCount = 0;
 
         LoadFloorsAndWaypoints();
+        if (autoBuildElevatorsOnStart) AutoBuildElevators();
         BuildFloorDropdownOptions();
         BuildFloorRanges();
         SetupLineStyle();
@@ -834,13 +834,22 @@ public class NavigationController : MonoBehaviour
 
         if (elevators != null)
         {
+            Debug.Log($"[ELEV] TryBuildBestRoute startFloor={startFloor} endFloor={endFloor} elevators={elevators?.Length ?? 0}");
             for (int e = 0; e < elevators.Length; e++)
             {
                 var elev = elevators[e];
                 if (elev == null) continue;
 
-                if (!TryGetElevatorDoors(elev, startFloor, out var startDoors)) continue;
-                if (!TryGetElevatorDoors(elev, endFloor, out var endDoors)) continue;
+                if (!TryGetElevatorDoors(elev, startFloor, out var startDoors))
+                {
+                    Debug.LogWarning($"[ELEV] '{elev.name}' has NO doors on startFloor={startFloor}");
+                    continue;
+                }
+                if (!TryGetElevatorDoors(elev, endFloor, out var endDoors))
+                {
+                    Debug.LogWarning($"[ELEV] '{elev.name}' has NO doors on endFloor={endFloor}");
+                    continue;
+                }
 
                 for (int ai = 0; ai < startDoors.Length; ai++)
                 {
@@ -848,21 +857,36 @@ public class NavigationController : MonoBehaviour
                     if (dA == null) continue;
 
                     Vector3 doorA = dA.position;
-                    if (!NavMesh.SamplePosition(doorA, out var hitA, 2f, NavMesh.AllAreas)) continue;
+                    if (!NavMesh.SamplePosition(doorA, out var hitA, 8f, NavMesh.AllAreas))
+                    {
+                        Debug.LogWarning($"[ELEV] SamplePosition FAIL doorA '{dA.name}' floor={startFloor} pos={dA.position}");
+                        continue;
+                    }
                     doorA = hitA.position;
 
-                    if (!TryCalculateNavCorners(start, doorA, out var aCorners)) continue;
-
+                    if (!TryCalculateNavCorners(start, doorA, out var aCorners))
+                    {
+                        Debug.LogWarning($"[ELEV] Path FAIL start->doorA doorA='{dA.name}' floor={startFloor} start={start} doorA={doorA}");
+                        continue;
+}
                     for (int bi = 0; bi < endDoors.Length; bi++)
                     {
                         var dB = endDoors[bi];
                         if (dB == null) continue;
 
                         Vector3 doorB = dB.position;
-                        if (!NavMesh.SamplePosition(doorB, out var hitB, 2f, NavMesh.AllAreas)) continue;
+                        if (!NavMesh.SamplePosition(doorB, out var hitB, 8f, NavMesh.AllAreas))
+                        {
+                            Debug.LogWarning($"[ELEV] SamplePosition FAIL doorB '{dB.name}' floor={endFloor} pos={dB.position}");
+                            continue;
+                        }
                         doorB = hitB.position;
 
-                        if (!TryCalculateNavCorners(doorB, end, out var bCorners)) continue;
+                        if (!TryCalculateNavCorners(doorB, end, out var bCorners))
+                        {
+                            Debug.LogWarning($"[ELEV] Path FAIL doorB->end doorB='{dB.name}' floor={endFloor} doorB={doorB} end={end}");
+                            continue;
+                        }
 
                         var pts = new List<Vector3>(aCorners.Length + bCorners.Length + 6);
 
@@ -897,6 +921,13 @@ public class NavigationController : MonoBehaviour
             }
         }
 
+        if (bestElevPts != null && bestElevPts.Count >= 2)
+        {
+            bestCorners = bestElevPts.ToArray();
+            return true;
+        }
+
+        Debug.Log($"[ELEV] stairsTime={stairsTime}, bestElevTime={bestElevTime}, hasStairsCorners={(stairsCorners!=null)}, hasBestElevPts={(bestElevPts!=null)}");
         if (stairsTime <= bestElevTime)
         {
             if (stairsCorners != null)
@@ -1499,53 +1530,52 @@ public class NavigationController : MonoBehaviour
 
     void AutoBuildElevators()
     {
-        if (!elevatorsRoot) return;
+        if (elevatorsRoot == null) return;
 
-        var list = new List<ElevatorShaft>();
+        var shafts = new List<ElevatorShaft>();
 
-        for (int s = 0; s < elevatorsRoot.childCount; s++)
+        foreach (Transform shaftTf in elevatorsRoot)
         {
-            var shaftTf = elevatorsRoot.GetChild(s);
-            if (!shaftTf) continue;
+            var shaft = new ElevatorShaft();
+            shaft.name = shaftTf.name;
+            shaft.shaftCenterXZ = shaftTf.Find("CenterXZ");
 
-            var shaft = new ElevatorShaft
+            var stopsTf = shaftTf.Find("Stops");
+            if (stopsTf == null) continue;
+
+            var stopList = new List<ElevatorStop>();
+
+            foreach (Transform stopTf in stopsTf)
             {
-                name = shaftTf.name,
-                shaftCenterXZ = shaftTf.Find("CenterXZ"),
-            };
-
-            var stopsRoot = shaftTf.Find("Stops");
-            if (!stopsRoot) continue;
-
-            var stops = new List<ElevatorStop>();
-
-            for (int i = 0; i < stopsRoot.childCount; i++)
-            {
-                var floorStop = stopsRoot.GetChild(i); // e.g. "F0", "F1"...
-                int floorIndex = ParseFloorIndex(floorStop.name);
+                int floorIndex = floors.FindIndex(f => f.name == stopTf.name);
+                if (floorIndex < 0)
+                {
+                    int parsed = ParseFloorIndex(stopTf.name);
+                    if (parsed >= 0 && parsed < floors.Count) floorIndex = parsed;
+                }
                 if (floorIndex < 0) continue;
 
                 var doors = new List<Transform>();
-                for (int d = 0; d < floorStop.childCount; d++)
-                {
-                    var door = floorStop.GetChild(d);
-                    if (door) doors.Add(door);
-                }
+                foreach (Transform d in stopTf)
+                    doors.Add(d);
 
                 if (doors.Count == 0) continue;
 
-                stops.Add(new ElevatorStop
+                stopList.Add(new ElevatorStop
                 {
                     floorIndex = floorIndex,
                     doorPoints = doors.ToArray()
                 });
             }
 
-            shaft.stops = stops.ToArray();
-            list.Add(shaft);
+            if (stopList.Count >= 2)
+            {
+                shaft.stops = stopList.ToArray();
+                shafts.Add(shaft);
+            }
         }
 
-        elevators = list.ToArray();
+        elevators = shafts.ToArray();
     }
 
     static int ParseFloorIndex(string name)
