@@ -533,29 +533,21 @@ public class CameraController : MonoBehaviour
         EnforceZone();
     }
 
-    public void MoveBirdEyeFromTo(
-        Transform from,
-        Transform to,
+    public void MoveBirdEyeAlongCorners(
+        Vector3[] corners,
         Action onComplete = null,
         Action<Vector3> onStep = null
     )
     {
-        if (from == null || to == null) return;
+        if (corners == null || corners.Length < 2) return;
 
         if (moveRoutine != null)
             CancelMove();
 
-        Vector3 start = ProjectToNavMesh(from.position);
-        Vector3 end = ProjectToNavMesh(to.position);
-
-        if (!UnityEngine.AI.NavMesh.CalculatePath(start, end, UnityEngine.AI.NavMesh.AllAreas, path))
-        {
-            Debug.LogError("NavMesh path failed");
-            return;
-        }
-
-        moveRoutine = StartCoroutine(MoveRoutine(path.corners, onComplete, onStep));
+        // Drive the same coroutine, but do NOT recalc NavMesh path here
+        moveRoutine = StartCoroutine(MoveRoutine(corners, onComplete, onStep));
     }
+
 
     public void CancelMove()
     {
