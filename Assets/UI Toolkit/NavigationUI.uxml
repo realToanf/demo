@@ -30,7 +30,11 @@
 
                     <ui:VisualElement class="header" name="cardHeader">
                         <ui:Label text="Chỉ đường" class="title"/>
-                        <ui:Button name="collapseBtn" class="iconBtn" focusable="false" />
+
+                        <ui:VisualElement class="headerActions">
+                            <ui:Button name="helpBtn" class="iconBtn iconBtn--help" focusable="false" />
+                            <ui:Button name="collapseBtn" class="iconBtn" focusable="false" />
+                        </ui:VisualElement>
                     </ui:VisualElement>
 
                     <!-- Start hidden as well (belt + suspenders) -->
@@ -71,11 +75,7 @@
             <ui:VisualElement name="instructionModal" class="modal">
                 <ui:Label class="modal-title" text="Hướng dẫn sử dụng" />
 
-                <ui:Label name="instructionBody" class="modal-body"
-                        text="• Chọn 'Bắt đầu từ phòng' và 'Tới phòng'
-        • Nhấn 'Bắt đầu đi' để xem đường đi
-        • Chọn tầng để xem các phòng
-        • 'Quay lại vị trí ban đầu' để reset góc nhìn" />
+                <ui:Label name="instructionBody" class="modal-body" />
 
                 <ui:VisualElement class="modal-actions">
                     <ui:Button name="instructionCloseBtn" text="Đã hiểu" />

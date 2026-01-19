@@ -50,16 +50,13 @@ public class NavigationUITK : MonoBehaviour
     Action collapseBtnClickAction;
 
     // ---------- Instruction Modal ----------
-    [Header("Instruction Modal")]
-    [SerializeField] bool showInstructionsOnlyOnce = true;
-
+    [Header("Instruction Modal")]    
     VisualElement instructionOverlay;
     Button instructionCloseBtn;
     Button helpBtn; // optional
+    Label instructionBody;
 
     bool isModalOpen = false;
-
-    const string INSTR_SEEN_KEY = "INSTRUCTIONS_SEEN";
 
     // Keep delegates for unsubscribe
     Action instructionCloseAction;
@@ -122,13 +119,6 @@ public class NavigationUITK : MonoBehaviour
         cardContent = card.Q<VisualElement>("cardContent");
         collapseBtn = card.Q<Button>("collapseBtn");
 
-        if (cardHeader != null && cardContent != null)
-        {
-            // Header click toggles
-            headerClickCb = _ => SetCollapsed(!isCollapsed);
-            cardHeader.RegisterCallback(headerClickCb);
-        }
-
         if (collapseBtn != null)
         {
             // Stop bubbling so button click doesn't also trigger header click
@@ -138,7 +128,7 @@ public class NavigationUITK : MonoBehaviour
             collapseBtn.clicked += collapseBtnClickAction;
         }
 
-        // ✅ Start collapsed
+        // Start collapsed
         SetCollapsed(true);
 
         // --- Other UI refs ---
@@ -197,6 +187,15 @@ public class NavigationUITK : MonoBehaviour
         instructionOverlay = root.Q<VisualElement>("instructionOverlay");
         instructionCloseBtn = root.Q<Button>("instructionCloseBtn");
         helpBtn = root.Q<Button>("helpBtn"); // optional button in your UXML
+        instructionBody = root.Q<Label>("instructionBody");
+        if (instructionBody != null)
+        {
+            instructionBody.text =
+                "• Chọn “Bắt đầu từ phòng” và “Tới phòng”\n" +
+                "• Nhấn “Bắt đầu đi” để xem đường đi\n" +
+                "• Chọn tầng để xem các phòng\n" +
+                "• “Quay lại vị trí ban đầu” để reset góc nhìn";
+        }
 
         if (instructionOverlay == null)
         {
@@ -219,16 +218,16 @@ public class NavigationUITK : MonoBehaviour
 
         if (helpBtn != null)
         {
+            // Prevent any parent/header click behavior
+            helpBtn.RegisterCallback<ClickEvent>(e => e.StopPropagation());
+
             helpBtnAction = OpenInstructions;
             helpBtn.clicked += helpBtnAction;
         }
 
         // Show on first run (optional)
-        bool seen = PlayerPrefs.GetInt(INSTR_SEEN_KEY, 0) == 1;
-        if (!showInstructionsOnlyOnce || !seen)
-            OpenInstructions();
-        else
-            instructionOverlay.AddToClassList("hidden");
+        instructionOverlay.AddToClassList("hidden");
+        isModalOpen = false;
     }
 
     public void OpenInstructions()
@@ -248,9 +247,6 @@ public class NavigationUITK : MonoBehaviour
 
         isModalOpen = false;
         instructionOverlay.AddToClassList("hidden");
-
-        PlayerPrefs.SetInt(INSTR_SEEN_KEY, 1);
-        PlayerPrefs.Save();
 
         // Optional:
         // SetControlsLocked(isNavigating);
@@ -277,9 +273,6 @@ public class NavigationUITK : MonoBehaviour
         uiPickScheduler?.Pause();
 
         // Unregister UI callbacks cleanly
-        if (cardHeader != null && headerClickCb != null)
-            cardHeader.UnregisterCallback(headerClickCb);
-
         if (collapseBtn != null && collapseBtnClickAction != null)
             collapseBtn.clicked -= collapseBtnClickAction;
 
