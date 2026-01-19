@@ -24,7 +24,6 @@ public class NavigationUITK : MonoBehaviour
     const string FROM_PLACEHOLDER = "Chọn điểm bắt đầu";
     const string TO_PLACEHOLDER   = "Chọn điểm đến";
 
-    // --- UI refs ---
     VisualElement rootVE;
     IPanel panel;
 
@@ -36,24 +35,18 @@ public class NavigationUITK : MonoBehaviour
     Button collapseBtn;
     bool isCollapsed = false;
 
-    // Hover flags (event-driven, reliable)
-    bool overCard = false;
-    bool overTopbar = false;
-
-    IVisualElementScheduledItem uiPickScheduler;
-
-    [Header("Debug")]
-    public bool logPicked = false;
+    // Pointer gating state
+    bool uiPointerDown = false;
 
     // Keep delegates so we can unsubscribe properly
-    EventCallback<ClickEvent> headerClickCb;
     Action collapseBtnClickAction;
 
     // ---------- Instruction Modal ----------
-    [Header("Instruction Modal")]    
+    [Header("Instruction Modal")]
     VisualElement instructionOverlay;
+    VisualElement instructionModal;
     Button instructionCloseBtn;
-    Button helpBtn; // optional
+    Button helpBtn;
     Label instructionBody;
 
     bool isModalOpen = false;
@@ -61,6 +54,21 @@ public class NavigationUITK : MonoBehaviour
     // Keep delegates for unsubscribe
     Action instructionCloseAction;
     Action helpBtnAction;
+
+    // Cached callbacks
+    EventCallback<PointerDownEvent> blockerDownCbAllow;
+    EventCallback<PointerUpEvent> blockerUpCbAllow;
+    EventCallback<PointerMoveEvent> blockerMoveCbAllow;
+    EventCallback<WheelEvent> blockerWheelCbAllow;
+
+    EventCallback<PointerDownEvent> blockerDownCbStop;
+    EventCallback<PointerUpEvent> blockerUpCbStop;
+    EventCallback<PointerMoveEvent> blockerMoveCbStop;
+    EventCallback<WheelEvent> blockerWheelCbStop;
+
+    // Global release callbacks (catch missed PointerUp)
+    EventCallback<PointerUpEvent> globalPointerUpCb;
+    EventCallback<PointerCancelEvent> globalPointerCancelCb;
 
     void Start()
     {
@@ -83,7 +91,7 @@ public class NavigationUITK : MonoBehaviour
         // Prevent full-screen root from being picked everywhere.
         root.pickingMode = PickingMode.Ignore;
 
-        // ---------- Instruction Modal Init (do early) ----------
+        // ---------- Instruction Modal Init ----------
         InitInstructionModal(root);
 
         // --- navCard ---
@@ -97,22 +105,14 @@ public class NavigationUITK : MonoBehaviour
 
         // --- topbar ---
         topbar = root.Q<VisualElement>("topbar");
-        if (topbar == null)
-        {
-            Debug.LogWarning("NavigationUITK: topbar not found. Header won't block camera.");
-        }
-        else
-        {
-            topbar.pickingMode = PickingMode.Position;
-        }
+        if (topbar != null) topbar.pickingMode = PickingMode.Position;
 
-        ForcePickableTree(card);
-        ForcePickableTree(topbar);
+        // ✅ Global safety net: if PointerUp gets eaten by dropdown popup/capture,
+        // this still clears uiPointerDown.
+        RegisterGlobalPointerRelease();
 
-        RegisterHoverTracking();
-
-        // Start scheduler AFTER we have rootVE.
-        uiPickScheduler = rootVE.schedule.Execute(UpdateCameraUiBlock).Every(16);
+        // ✅ Immediate UI blocking (without breaking button clicks)
+        RegisterImmediateUiBlocking();
 
         // --- Collapsible refs ---
         cardHeader  = card.Q<VisualElement>("cardHeader");
@@ -121,9 +121,7 @@ public class NavigationUITK : MonoBehaviour
 
         if (collapseBtn != null)
         {
-            // Stop bubbling so button click doesn't also trigger header click
             collapseBtn.RegisterCallback<ClickEvent>(e => e.StopPropagation());
-
             collapseBtnClickAction = () => SetCollapsed(!isCollapsed);
             collapseBtn.clicked += collapseBtnClickAction;
         }
@@ -180,38 +178,36 @@ public class NavigationUITK : MonoBehaviour
         OnNavigationStateChanged(false);
         RefreshNavigateButtonState();
         RefreshRefocusButtonState();
+
+        UpdateBlockFromState();
     }
 
     void InitInstructionModal(VisualElement root)
     {
-        instructionOverlay = root.Q<VisualElement>("instructionOverlay");
-        instructionCloseBtn = root.Q<Button>("instructionCloseBtn");
-        helpBtn = root.Q<Button>("helpBtn"); // optional button in your UXML
-        instructionBody = root.Q<Label>("instructionBody");
+        instructionOverlay   = root.Q<VisualElement>("instructionOverlay");
+        instructionModal     = root.Q<VisualElement>("instructionModal");
+        instructionCloseBtn  = root.Q<Button>("instructionCloseBtn");
+        helpBtn              = root.Q<Button>("helpBtn");
+        instructionBody      = root.Q<Label>("instructionBody");
+
         if (instructionBody != null)
         {
             instructionBody.text =
+                "• Nhấn nút kính lúp để hiển thị/ẩn menu chỉ đường\n" +
                 "• Chọn “Bắt đầu từ phòng” và “Tới phòng”\n" +
                 "• Nhấn “Bắt đầu đi” để xem đường đi\n" +
-                "• Nhấn “Hủy chỉ đường” để ngừng vẽ đường đi" +
+                "• Nhấn “Hủy chỉ đường” để ngừng vẽ đường đi\n" +
                 "• Chọn tầng để xem các phòng\n" +
                 "• “Quay lại vị trí ban đầu” để reset góc nhìn";
         }
 
         if (instructionOverlay == null)
         {
-            // It's optional, but you asked for it. Log so you know you missed UXML.
             Debug.LogWarning("NavigationUITK: instructionOverlay not found (instruction modal disabled).");
             return;
         }
 
-        // Root is PickingMode.Ignore => overlay MUST be pickable to intercept events.
         instructionOverlay.pickingMode = PickingMode.Position;
-
-        // Extra safety: stop pointer events from going to UI behind
-        instructionOverlay.RegisterCallback<PointerDownEvent>(e => e.StopPropagation());
-        instructionOverlay.RegisterCallback<PointerUpEvent>(e => e.StopPropagation());
-        instructionOverlay.RegisterCallback<PointerMoveEvent>(e => e.StopPropagation());
 
         instructionCloseAction = CloseInstructions;
         if (instructionCloseBtn != null)
@@ -219,14 +215,14 @@ public class NavigationUITK : MonoBehaviour
 
         if (helpBtn != null)
         {
-            // Prevent any parent/header click behavior
             helpBtn.RegisterCallback<ClickEvent>(e => e.StopPropagation());
-
             helpBtnAction = OpenInstructions;
             helpBtn.clicked += helpBtnAction;
         }
 
-        // Show on first run (optional)
+        if (instructionModal != null)
+            instructionModal.pickingMode = PickingMode.Position;
+
         instructionOverlay.AddToClassList("hidden");
         isModalOpen = false;
     }
@@ -238,8 +234,8 @@ public class NavigationUITK : MonoBehaviour
         isModalOpen = true;
         instructionOverlay.RemoveFromClassList("hidden");
 
-        // Optional: if you want to lock dropdown interaction behind modal:
-        // SetControlsLocked(true);
+        // modal is open -> block immediately
+        UpdateBlockFromState();
     }
 
     public void CloseInstructions()
@@ -249,31 +245,188 @@ public class NavigationUITK : MonoBehaviour
         isModalOpen = false;
         instructionOverlay.AddToClassList("hidden");
 
-        // Optional:
-        // SetControlsLocked(isNavigating);
+        // closing modal -> unblock unless actively pressing UI
+        UpdateBlockFromState();
     }
 
-    void RegisterHoverTracking()
+    void RegisterGlobalPointerRelease()
     {
-        if (card != null)
-        {
-            card.RegisterCallback<PointerEnterEvent>(_ => overCard = true, TrickleDown.TrickleDown);
-            card.RegisterCallback<PointerLeaveEvent>(_ => overCard = false, TrickleDown.TrickleDown);
-        }
+        if (rootVE == null) return;
 
-        if (topbar != null)
+        globalPointerUpCb = OnAnyPointerUp_Global;
+        globalPointerCancelCb = OnAnyPointerCancel_Global;
+
+        // TrickleDown = we still get it even if something stops bubbling
+        rootVE.RegisterCallback(globalPointerUpCb, TrickleDown.TrickleDown);
+        rootVE.RegisterCallback(globalPointerCancelCb, TrickleDown.TrickleDown);
+    }
+
+    void OnAnyPointerUp_Global(PointerUpEvent e)
+    {
+        // ✅ Always release. Don't depend on pointerId (dropdown/popups can break it).
+        uiPointerDown = false;
+        UpdateBlockFromState();
+    }
+
+    void OnAnyPointerCancel_Global(PointerCancelEvent e)
+    {
+        uiPointerDown = false;
+        UpdateBlockFromState();
+    }
+
+    void RegisterImmediateUiBlocking()
+    {
+        blockerDownCbAllow  = OnUiPointerDown_Allow;
+        blockerUpCbAllow    = OnUiPointerUp_Allow;
+        blockerMoveCbAllow  = OnUiPointerMove_Allow;
+        blockerWheelCbAllow = OnUiWheel_Allow;
+
+        blockerDownCbStop  = OnOverlayPointerDown_Stop;
+        blockerUpCbStop    = OnOverlayPointerUp_Stop;
+        blockerMoveCbStop  = OnOverlayPointerMove_Stop;
+        blockerWheelCbStop = OnOverlayWheel_Stop;
+
+        RegisterBlockerAllow(card);
+        RegisterBlockerAllow(topbar);
+
+        // Overlay: stop click-through ONLY on backdrop
+        if (instructionOverlay != null)
         {
-            topbar.RegisterCallback<PointerEnterEvent>(_ => overTopbar = true, TrickleDown.TrickleDown);
-            topbar.RegisterCallback<PointerLeaveEvent>(_ => overTopbar = false, TrickleDown.TrickleDown);
+            instructionOverlay.RegisterCallback(blockerDownCbStop);
+            instructionOverlay.RegisterCallback(blockerUpCbStop);
+            instructionOverlay.RegisterCallback(blockerMoveCbStop);
+            instructionOverlay.RegisterCallback(blockerWheelCbStop);
+        }
+    }
+
+    void RegisterBlockerAllow(VisualElement ve)
+    {
+        if (ve == null) return;
+
+        ve.pickingMode = PickingMode.Position;
+
+        ve.RegisterCallback(blockerDownCbAllow, TrickleDown.TrickleDown);
+        ve.RegisterCallback(blockerUpCbAllow, TrickleDown.TrickleDown);
+        ve.RegisterCallback(blockerMoveCbAllow, TrickleDown.TrickleDown);
+        ve.RegisterCallback(blockerWheelCbAllow, TrickleDown.TrickleDown);
+    }
+
+    // ---- Allowing callbacks (card/topbar) ----
+    void OnUiPointerDown_Allow(PointerDownEvent e)
+    {
+        uiPointerDown = true;
+        UpdateBlockFromState();
+        // DO NOT stop propagation
+    }
+
+    void OnUiPointerUp_Allow(PointerUpEvent e)
+    {
+        uiPointerDown = false;
+        UpdateBlockFromState();
+        // DO NOT stop propagation
+    }
+
+    void OnUiPointerMove_Allow(PointerMoveEvent e)
+    {
+        // If dragging UI, keep blocked
+        if (uiPointerDown)
+            UpdateBlockFromState();
+    }
+
+    void OnUiWheel_Allow(WheelEvent e)
+    {
+        // Scroll counts as "interacting"
+        if (cam != null) cam.blockInputByUI = true;
+        // DO NOT stop propagation
+    }
+
+    // ---- Stop callbacks (overlay backdrop only) ----
+    void OnOverlayPointerDown_Stop(PointerDownEvent e)
+    {
+        if (instructionOverlay == null) return;
+        if (e.target != instructionOverlay) return; // allow modal button clicks
+
+        uiPointerDown = true;
+        UpdateBlockFromState();
+        e.StopPropagation();
+    }
+
+    void OnOverlayPointerUp_Stop(PointerUpEvent e)
+    {
+        if (instructionOverlay == null) return;
+        if (e.target != instructionOverlay) return;
+
+        uiPointerDown = false;
+        UpdateBlockFromState();
+        e.StopPropagation();
+    }
+
+    void OnOverlayPointerMove_Stop(PointerMoveEvent e)
+    {
+        if (instructionOverlay == null) return;
+        if (e.target != instructionOverlay) return;
+
+        UpdateBlockFromState();
+        e.StopPropagation();
+    }
+
+    void OnOverlayWheel_Stop(WheelEvent e)
+    {
+        if (cam != null) cam.blockInputByUI = true;
+        // don't stop wheel
+    }
+
+    void UpdateBlockFromState()
+    {
+        if (cam == null) return;
+
+        // ✅ Only two reasons to block:
+        // - modal open
+        // - actively pressing UI
+        cam.blockInputByUI = isModalOpen || uiPointerDown;
+    }
+
+    void Update()
+    {
+        RefreshRefocusButtonState();
+
+        // ✅ HARD WATCHDOG:
+        // UI Toolkit can miss PointerUp (dropdown popup, capture, etc).
+        // If no mouse buttons are actually pressed anymore, release the UI lock.
+        if (!isModalOpen && uiPointerDown)
+        {
+            var mouse = Mouse.current;
+            bool anyMouseDown =
+                mouse != null &&
+                (mouse.leftButton.isPressed || mouse.rightButton.isPressed || mouse.middleButton.isPressed);
+
+            var ts = Touchscreen.current;
+            bool anyTouchDown = false;
+            if (ts != null)
+            {
+                var touches = ts.touches;
+                for (int i = 0; i < touches.Count; i++)
+                {
+                    if (touches[i].isInProgress)
+                    {
+                        anyTouchDown = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!anyMouseDown && !anyTouchDown)
+            {
+                uiPointerDown = false;
+                UpdateBlockFromState();
+            }
         }
     }
 
     void OnDisable()
     {
         if (cam != null) cam.blockInputByUI = false;
-        uiPickScheduler?.Pause();
 
-        // Unregister UI callbacks cleanly
         if (collapseBtn != null && collapseBtnClickAction != null)
             collapseBtn.clicked -= collapseBtnClickAction;
 
@@ -283,23 +436,46 @@ public class NavigationUITK : MonoBehaviour
         if (helpBtn != null && helpBtnAction != null)
             helpBtn.clicked -= helpBtnAction;
 
-        if (nav == null) return;
+        if (card != null && blockerDownCbAllow != null)
+        {
+            card.UnregisterCallback(blockerDownCbAllow, TrickleDown.TrickleDown);
+            card.UnregisterCallback(blockerUpCbAllow, TrickleDown.TrickleDown);
+            card.UnregisterCallback(blockerMoveCbAllow, TrickleDown.TrickleDown);
+            card.UnregisterCallback(blockerWheelCbAllow, TrickleDown.TrickleDown);
+        }
 
-        nav.FloorsChanged -= RefreshFloors;
-        nav.ActiveFloorChanged -= RefreshActiveFloor;
-        nav.SelectionChanged -= RefreshSelections;
-        nav.NavigationStateChanged -= OnNavigationStateChanged;
+        if (topbar != null && blockerDownCbAllow != null)
+        {
+            topbar.UnregisterCallback(blockerDownCbAllow, TrickleDown.TrickleDown);
+            topbar.UnregisterCallback(blockerUpCbAllow, TrickleDown.TrickleDown);
+            topbar.UnregisterCallback(blockerMoveCbAllow, TrickleDown.TrickleDown);
+            topbar.UnregisterCallback(blockerWheelCbAllow, TrickleDown.TrickleDown);
+        }
 
-        if (navigateBtn != null)
-            navigateBtn.clicked -= OnNavigateButtonClicked;
+        if (instructionOverlay != null && blockerDownCbStop != null)
+        {
+            instructionOverlay.UnregisterCallback(blockerDownCbStop);
+            instructionOverlay.UnregisterCallback(blockerUpCbStop);
+            instructionOverlay.UnregisterCallback(blockerMoveCbStop);
+            instructionOverlay.UnregisterCallback(blockerWheelCbStop);
+        }
 
-        if (refocusBtn != null)
-            refocusBtn.clicked -= OnRefocusClicked;
-    }
+        if (rootVE != null && globalPointerUpCb != null)
+        {
+            rootVE.UnregisterCallback(globalPointerUpCb, TrickleDown.TrickleDown);
+            rootVE.UnregisterCallback(globalPointerCancelCb, TrickleDown.TrickleDown);
+        }
 
-    void Update()
-    {
-        RefreshRefocusButtonState();
+        if (nav != null)
+        {
+            nav.FloorsChanged -= RefreshFloors;
+            nav.ActiveFloorChanged -= RefreshActiveFloor;
+            nav.SelectionChanged -= RefreshSelections;
+            nav.NavigationStateChanged -= OnNavigationStateChanged;
+        }
+
+        if (navigateBtn != null) navigateBtn.clicked -= OnNavigateButtonClicked;
+        if (refocusBtn != null)  refocusBtn.clicked -= OnRefocusClicked;
     }
 
     void SetControlsLocked(bool locked)
@@ -462,97 +638,5 @@ public class NavigationUITK : MonoBehaviour
             if (isCollapsed) card.AddToClassList("card--collapsed");
             else card.RemoveFromClassList("card--collapsed");
         }
-    }
-
-    void UpdateCameraUiBlock()
-    {
-        if (cam == null || uiDocument == null) return;
-
-        // Modal open => ALWAYS block camera input
-        if (isModalOpen)
-        {
-            cam.blockInputByUI = true;
-            return;
-        }
-
-        if (panel == null)
-        {
-            var root = uiDocument.rootVisualElement;
-            if (root == null) return;
-
-            panel = root.panel;
-            if (panel == null) return;
-        }
-
-        bool block = false;
-
-        // A) Pointer capture = UI currently interacting (dropdown popup / scrolling / drag etc.)
-        IEventHandler capturingHandler = panel.GetCapturingElement(PointerId.mousePointerId);
-        if (capturingHandler != null)
-            block = true;
-
-        // B) Hover flags (topbar/card)
-        if (!block && (overCard || overTopbar))
-            block = true;
-
-        // C) Fallback: use Pick only for dropdown popup detection
-        VisualElement picked = null;
-        if (!block || logPicked)
-        {
-            var mouse = Mouse.current;
-            if (mouse != null)
-            {
-                Vector2 screenPos = mouse.position.ReadValue();
-                Vector2 panelPos  = RuntimePanelUtils.ScreenToPanel(panel, screenPos);
-                picked = panel.Pick(panelPos);
-
-                if (!block && picked != null && LooksLikeDropdownPopup(picked))
-                    block = true;
-            }
-        }
-
-        cam.blockInputByUI = block;
-
-        if (logPicked)
-        {
-            var capturingVE = capturingHandler as VisualElement;
-
-            string pickedStr = picked != null ? $"{picked.name}/{picked.GetType().Name}" : "null";
-            string capStr = capturingVE != null ? $"{capturingVE.name}/{capturingVE.GetType().Name}"
-                                                : (capturingHandler != null ? capturingHandler.GetType().Name : "null");
-
-            Debug.Log($"UIBlock: block={block} overCard={overCard} overTopbar={overTopbar} picked={pickedStr} capturing={capStr}");
-        }
-    }
-
-    bool LooksLikeDropdownPopup(VisualElement ve)
-    {
-        int steps = 0;
-        while (ve != null && steps++ < 16)
-        {
-            string n = ve.name ?? "";
-
-            if (n.IndexOf("unity-dropdown", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            if (n.IndexOf("popup", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-
-            if (ve.ClassListContains("unity-base-dropdown")) return true;
-            if (ve.ClassListContains("unity-base-popup-field")) return true;
-            if (ve.ClassListContains("unity-popup-window")) return true;
-            if (ve.ClassListContains("unity-list-view")) return true;
-
-            ve = ve.parent;
-        }
-
-        return false;
-    }
-
-    static void ForcePickableTree(VisualElement ve)
-    {
-        if (ve == null) return;
-
-        ve.pickingMode = PickingMode.Position;
-
-        foreach (var child in ve.Children())
-            ForcePickableTree(child);
     }
 }
