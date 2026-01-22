@@ -198,7 +198,7 @@ public class NavigationUITK : MonoBehaviour
                 "• Nhấn “Bắt đầu đi” để xem đường đi\n" +
                 "• Nhấn “Hủy chỉ đường” để ngừng vẽ đường đi\n" +
                 "• Chọn tầng để xem các phòng\n" +
-                "• “Quay lại vị trí ban đầu” để reset góc nhìn";
+                "• “Quay lại góc nhìn ban đầu” để quay lại góc nhìn";
         }
 
         if (instructionOverlay == null)

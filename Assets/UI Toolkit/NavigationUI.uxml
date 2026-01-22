@@ -64,7 +64,7 @@
                         </ui:VisualElement>
 
                         <ui:Button name="modeBtn" text="Chuyển chế độ" class="modeBtn" />
-                        <ui:Button name="refocusBtn" text="Quay lại vị trí ban đầu" class="refocus" />
+                        <ui:Button name="refocusBtn" text="Quay lại góc nhìn ban đầu" class="refocus" />
                     </ui:VisualElement>
 
                 </ui:VisualElement>

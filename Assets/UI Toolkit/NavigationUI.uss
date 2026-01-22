@@ -2,6 +2,15 @@
    Global spacing + layout
 ---------------------------- */
 
+:root{
+  --ui-scale: 1.25; /* 1.0 = normal, 1.25 = 125%, 1.5 = 150% */
+}
+
+.hud{
+  transform: scale(var(--ui-scale));
+  transform-origin: top right; /* matches your root being top-right anchored */
+}
+
 /* Card container */
 .root {
     position: absolute;
