@@ -1,3 +1,4 @@
+// Đánh dấu điểm dừng thang máy thuộc tầng nào.
 using UnityEngine;
 
 public class ElevatorStopFloor : MonoBehaviour

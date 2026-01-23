@@ -1,3 +1,4 @@
+// Điều khiển camera ở chế độ BirdEye/FPS, xử lý input và giới hạn vùng.
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;

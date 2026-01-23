@@ -1,3 +1,4 @@
+// Gán ID ổn định và tên hiển thị cho tầng.
 using UnityEngine;
 
 public class FloorId : MonoBehaviour
