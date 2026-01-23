@@ -28,7 +28,7 @@ public class NavigationController : MonoBehaviour
     public float maxLabelSize = 2.2f;
     public float sizeAt1Meter = 1.4f;          // (Optional) not used in default scaling mode below
     public float scaleStartDistance = 2f;
-    public float scaleEndDistance = 30f;    
+    public float scaleEndDistance = 30f;
 
     [Header("Camera")]
     public Transform mainCamera;
@@ -63,7 +63,7 @@ public class NavigationController : MonoBehaviour
     [Serializable]
     public class ElevatorStop
     {
-        public int floorIndex;
+        public int floorIndex;          // IMPORTANT: this is the internal floor list index (after sorting by FloorId)
         public Transform[] doorPoints;
     }
 
@@ -86,12 +86,13 @@ public class NavigationController : MonoBehaviour
 
     [Header("Nav Alpha Split")]
     [Range(0.05f, 1f)] public float navFloorAlpha = 0.22f;
-    [Range(0.05f, 1f)] public float navWallAlpha  = 0.45f;
+    [Range(0.05f, 1f)] public float navWallAlpha = 0.45f;
     [Range(0.05f, 1f)] public float navOtherAlpha = 0.55f;
 
     [Header("Hierarchy names")]
     public string floorRootName = "Floor";
-    public string wallRootName  = "Wall";
+    public string wallRootName = "Wall";
+
     // ---------------------------------------------------------
     // Props Visibility
     // ---------------------------------------------------------
@@ -137,7 +138,7 @@ public class NavigationController : MonoBehaviour
     // All points across all floors (ONLY real points)
     private readonly List<Transform> allPoints = new();
     private readonly List<string> allPointNames = new();
-    private readonly List<int> allPointFloorIndex = new(); // point -> floor index
+    private readonly List<int> allPointFloorIndex = new(); // point -> floor index (internal list index)
 
     private NavMeshPath path;
 
@@ -242,7 +243,10 @@ public class NavigationController : MonoBehaviour
 
         FloorsChanged?.Invoke();
 
-        SetFloor(0);
+        // NEW: default to floorId = 0 (Ground) if available, else fallback to index 0
+        int defaultIdx = FindFloorIndexById(0);
+        if (defaultIdx < 0) defaultIdx = 0;
+        SetFloor(defaultIdx);
 
         ClampSelections();
 
@@ -298,7 +302,7 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
-    // LOAD DATA
+    // LOAD DATA (PATCHED: stable floor ordering by FloorId.id)
     // =========================================================
     void LoadFloorsAndWaypoints()
     {
@@ -318,11 +322,29 @@ public class NavigationController : MonoBehaviour
         SelectedFrom = -1;
         SelectedTo = -1;
 
+        // NEW: read FloorId + sort by stable id (not hierarchy order)
+        var floorList = new List<(Transform tf, int id, string uiName)>();
+
         for (int i = 0; i < floorsRoot.childCount; i++)
         {
             Transform floor = floorsRoot.GetChild(i);
+            var fid = floor.GetComponent<FloorId>();
+
+            int stableId = (fid != null) ? fid.id : i; // fallback if missing
+            string uiName = (fid != null && !string.IsNullOrEmpty(fid.displayName)) ? fid.displayName : floor.name;
+
+            floorList.Add((floor, stableId, uiName));
+        }
+
+        floorList.Sort((a, b) => a.id.CompareTo(b.id));
+
+        // Build lists using sorted order
+        for (int i = 0; i < floorList.Count; i++)
+        {
+            Transform floor = floorList[i].tf;
+
             floors.Add(floor);
-            floorNames.Add(floor.name);
+            floorNames.Add(floorList[i].uiName);
 
             Transform propsRoot = floor.Find(propsRootName);
             floorPropsRoots.Add(propsRoot);
@@ -344,6 +366,8 @@ public class NavigationController : MonoBehaviour
 
                     allPoints.Add(t);
                     allPointNames.Add($"{floor.name} - {t.name}");
+
+                    // IMPORTANT: floor index is now this sorted index i
                     allPointFloorIndex.Add(i);
                 }
             }
@@ -351,6 +375,18 @@ public class NavigationController : MonoBehaviour
             floorPoints[i] = points;
             floorLabels[i] = labels;
         }
+    }
+
+    // NEW: helper to find internal floor index by FloorId.id
+    int FindFloorIndexById(int floorId)
+    {
+        for (int i = 0; i < floors.Count; i++)
+        {
+            var fid = floors[i].GetComponent<FloorId>();
+            if (fid != null && fid.id == floorId)
+                return i;
+        }
+        return -1;
     }
 
     // =========================================================
@@ -382,7 +418,7 @@ public class NavigationController : MonoBehaviour
     {
         // NEW: lock floor switching while a route is active
         if (isNavigating) return;
-        
+
         if (floors.Count == 0) return;
         ShowAllFloors = false;
 
@@ -406,6 +442,7 @@ public class NavigationController : MonoBehaviour
 
     public void SetFloorFromDropdown(int dropdownIndex)
     {
+        Debug.Log($"[UI] dropdownIndex={dropdownIndex} option='{floorDropdownOptions[dropdownIndex]}'");
         if (isNavigating) return; // CHỈ khóa khi camera đang chạy
 
         dropdownIndex = Mathf.Clamp(dropdownIndex, 0, floorDropdownOptions.Count - 1);
@@ -460,7 +497,6 @@ public class NavigationController : MonoBehaviour
             SetFloor(dropdownIndex - 1);
         }
     }
-
 
     public void SetFloorVisible(int index, bool visible)
     {
@@ -597,7 +633,7 @@ public class NavigationController : MonoBehaviour
         Vector3 end = allPoints[SelectedTo].position;
 
         int fromFloor = allPointFloorIndex[SelectedFrom];
-        int toFloor   = allPointFloorIndex[SelectedTo];
+        int toFloor = allPointFloorIndex[SelectedTo];
 
         if (TryBuildBestRoute(start, fromFloor, end, toFloor, out var corners))
         {
@@ -648,7 +684,7 @@ public class NavigationController : MonoBehaviour
         Vector3 end = allPoints[SelectedTo].position;
 
         int fromFloor = allPointFloorIndex[SelectedFrom];
-        int toFloor   = allPointFloorIndex[SelectedTo];
+        int toFloor = allPointFloorIndex[SelectedTo];
 
         if (!TryBuildBestRoute(start, fromFloor, end, toFloor, out navCorners))
         {
@@ -780,7 +816,6 @@ public class NavigationController : MonoBehaviour
         return false;
     }
 
-
     List<Vector3> BuildElevatorRide(ElevatorShaft elev, Vector3 doorA, Vector3 doorB)
     {
         var pts = new List<Vector3>(3);
@@ -867,7 +902,8 @@ public class NavigationController : MonoBehaviour
                     {
                         Debug.LogWarning($"[ELEV] Path FAIL start->doorA doorA='{dA.name}' floor={startFloor} start={start} doorA={doorA}");
                         continue;
-}
+                    }
+
                     for (int bi = 0; bi < endDoors.Length; bi++)
                     {
                         var dB = endDoors[bi];
@@ -926,7 +962,7 @@ public class NavigationController : MonoBehaviour
             return true;
         }
 
-        Debug.Log($"[ELEV] stairsTime={stairsTime}, bestElevTime={bestElevTime}, hasStairsCorners={(stairsCorners!=null)}, hasBestElevPts={(bestElevPts!=null)}");
+        Debug.Log($"[ELEV] stairsTime={stairsTime}, bestElevTime={bestElevTime}, hasStairsCorners={(stairsCorners != null)}, hasBestElevPts={(bestElevPts != null)}");
         if (stairsTime <= bestElevTime)
         {
             if (stairsCorners != null)
@@ -935,7 +971,6 @@ public class NavigationController : MonoBehaviour
                 return true;
             }
         }
-
         else
         {
             if (bestElevPts != null && bestElevPts.Count >= 2)
@@ -1211,7 +1246,7 @@ public class NavigationController : MonoBehaviour
 
         tmp.enableAutoSizing = false;
         tmp.fontSizeMin = labelSize * 0.35f;
-        tmp.fontSizeMax = labelSize * 0.50f;    
+        tmp.fontSizeMax = labelSize * 0.50f;
 
         tmp.characterSpacing = 0f;
         tmp.lineSpacing = -10f;
@@ -1527,6 +1562,9 @@ public class NavigationController : MonoBehaviour
         FloorsChanged?.Invoke();
     }
 
+    // =========================================================
+    // AUTO BUILD ELEVATORS (PATCHED: use ElevatorStopFloor.floorId)
+    // =========================================================
     void AutoBuildElevators()
     {
         if (elevatorsRoot == null) return;
@@ -1546,12 +1584,25 @@ public class NavigationController : MonoBehaviour
 
             foreach (Transform stopTf in stopsTf)
             {
-                int floorIndex = floors.FindIndex(f => f.name == stopTf.name);
-                if (floorIndex < 0)
+                // NEW: stopTf must have ElevatorStopFloor defining which floorId this stop is on
+                var stopFloor = stopTf.GetComponent<ElevatorStopFloor>();
+                int floorIndex = -1;
+
+                if (stopFloor != null)
                 {
-                    int parsed = ParseFloorIndex(stopTf.name);
-                    if (parsed >= 0 && parsed < floors.Count) floorIndex = parsed;
+                    floorIndex = FindFloorIndexById(stopFloor.floorId);
                 }
+                else
+                {
+                    // Fallback for old naming setups (optional)
+                    int parsedId = ParseFloorIdFromName(stopTf.name);
+                    if (parsedId != int.MinValue)
+                        floorIndex = FindFloorIndexById(parsedId);
+
+                    if (floorIndex < 0)
+                        Debug.LogWarning($"[ELEV] Stop '{stopTf.name}' is missing ElevatorStopFloor AND name doesn't map to a FloorId. Add ElevatorStopFloor to this stop.");
+                }
+
                 if (floorIndex < 0) continue;
 
                 var doors = new List<Transform>();
@@ -1575,21 +1626,37 @@ public class NavigationController : MonoBehaviour
         }
 
         elevators = shafts.ToArray();
+
+        Debug.Log($"[ELEV] built shafts={elevators?.Length ?? 0}");
+        if (elevators != null)
+        {
+            foreach (var sh in elevators)
+            {
+                Debug.Log($"[ELEV] shaft={sh.name} stops={sh.stops?.Length ?? 0}");
+                if (sh.stops != null)
+                    foreach (var st in sh.stops)
+                        Debug.Log($"[ELEV]  stop floorIndex={st.floorIndex} doors={st.doorPoints?.Length ?? 0}");
+            }
+        }
+
     }
 
-    static int ParseFloorIndex(string name)
+    // Optional fallback: try parse a signed int anywhere in the name (e.g. "F-1", "Floor0", "-1")
+    static int ParseFloorIdFromName(string name)
     {
-        // Accept "F0", "f2", "Floor3" etc.
         name = name.Trim();
         for (int i = 0; i < name.Length; i++)
         {
-            if (char.IsDigit(name[i]))
+            if (name[i] == '-' || char.IsDigit(name[i]))
             {
-                if (int.TryParse(name.Substring(i), out int idx))
-                    return idx;
-                break;
+                int j = i + 1;
+                while (j < name.Length && char.IsDigit(name[j])) j++;
+                var token = name.Substring(i, j - i);
+                if (int.TryParse(token, out int v))
+                    return v;
+                i = j;
             }
         }
-        return -1;
+        return int.MinValue;
     }
 }
