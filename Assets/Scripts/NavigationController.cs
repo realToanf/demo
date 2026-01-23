@@ -8,62 +8,62 @@ using TMPro;
 
 public class NavigationController : MonoBehaviour
 {
-    [Header("List")]
+    [Header("Cấu trúc tầng")]
     public Transform floorsRoot;
 
-    [Header("Path")]
+    [Header("Đường dẫn Line Renderer")]
     public LineRenderer line;
     public Material lineMaterial;
 
-    [Header("Waypoint Labels")]
+    [Header("Nhãn tên địa điểm")]
     public TMP_FontAsset labelFont;
     public float labelHeight = 1f;
     public float labelSize = 8f;
 
-    [Header("Waypoint Labels Layer")]
+    [Header("Lớp (Layer) cho nhãn tên")]
     public string labelLayerName = "WaypointLabels";
 
-    [Header("Label Scaling")]
+    [Header("Tự động co giãn kích thước nhãn")]
     public float minLabelSize = 0.8f;
     public float maxLabelSize = 2.2f;
-    public float sizeAt1Meter = 1.4f;          // (Optional) not used in default scaling mode below
+    public float sizeAt1Meter = 1.4f;
     public float scaleStartDistance = 2f;
     public float scaleEndDistance = 30f;
 
     [Header("Camera")]
     public Transform mainCamera;
 
-    [Header("Navigation Visuals")]
+    [Header("Hiệu ứng biểu tượng (Ping)")]
     public GameObject startPingPrefab;
     public GameObject endPingPrefab;
 
-    [Header("Line Style")]
+    [Header("Kiểu dáng đường kẻ")]
     public float lineWidth = 0.25f;
     public int lineCornerVertices = 8;
     public int lineCapVertices = 8;
     public Gradient lineGradient;
     public AnimationCurve widthCurve = AnimationCurve.Linear(0, 1, 1, 1);
 
-    [Header("Gradual Draw")]
-    public float revealSpeed = 12f; // meters per second
-    public float lineHeightOffset = 0.05f; // reduce z-fighting
+    [Header("Tốc độ vẽ đường dẫn")]
+    public float revealSpeed = 12f; // mét mỗi giây
+    public float lineHeightOffset = 0.05f; // tránh hiện tượng chồng lấp mặt phẳng (z-fighting)
 
-    [Header("Elevators (Door points per floor)")]
+    [Header("Thang máy (Điểm dừng tại mỗi tầng)")]
     public ElevatorShaft[] elevators;
-    [Header("Routing Speeds (seconds-based)")]
+    [Header("Tốc độ di chuyển (giây)")]
     public float walkSpeed = 1.4f;
     public float elevatorSpeed = 2.5f;
     public float elevatorAvgWaitSeconds = 5f;
     public bool forceVerticalAtShaftCenter = true;
 
-    [Header("Auto Elevator Setup (optional)")]
-    public Transform elevatorsRoot; // assign ElevatorsRoot
+    [Header("Tự động thiết lập thang máy")]
+    public Transform elevatorsRoot;
     public bool autoBuildElevatorsOnStart = true;
 
     [Serializable]
     public class ElevatorStop
     {
-        public int floorIndex;          // IMPORTANT: this is the internal floor list index (after sorting by FloorId)
+        public int floorIndex;
         public Transform[] doorPoints;
     }
 
@@ -75,28 +75,25 @@ public class NavigationController : MonoBehaviour
         public ElevatorStop[] stops;
     }
 
-    [Header("Optional: Texture Scroll")]
+    [Header("Cuộn cấu trúc bề mặt (Texture Scroll)")]
     public bool enableTextureScroll = false;
     public float textureScrollSpeed = 1f;
     private float textureOffset = 0f;
 
-    [Header("Navigation Transparency (PER-MATERIAL CLONE)")]
+    [Header("Độ trong suốt khi dẫn đường")]
     public bool makeFloorsTransparentInNav = true;
     [Range(0.05f, 1f)] public float navAlpha = 0.35f;
 
-    [Header("Nav Alpha Split")]
+    [Header("Phân chia độ trong suốt")]
     [Range(0.05f, 1f)] public float navFloorAlpha = 0.22f;
     [Range(0.05f, 1f)] public float navWallAlpha = 0.45f;
     [Range(0.05f, 1f)] public float navOtherAlpha = 0.55f;
 
-    [Header("Hierarchy names")]
+    [Header("Tên các đối tượng trong kiến trúc")]
     public string floorRootName = "Floor";
     public string wallRootName = "Wall";
 
-    // ---------------------------------------------------------
-    // Props Visibility
-    // ---------------------------------------------------------
-    [Header("Props Visibility")]
+    [Header("Hiển thị các vật dụng (Props)")]
     public string propsRootName = "Props";
     public bool hidePropsWhenTransparent = true;
 
@@ -192,7 +189,7 @@ public class NavigationController : MonoBehaviour
     private int previewRestoreDropdownIndex = 1;
 
     // =========================================================
-    // STARTUP
+    // KHỞI TẠO HỆ THỐNG
     // =========================================================
     IEnumerator Start()
     {
@@ -243,10 +240,21 @@ public class NavigationController : MonoBehaviour
 
         FloorsChanged?.Invoke();
 
-        // NEW: default to floorId = 0 (Ground) if available, else fallback to index 0
+        // NEW: default to "Tất cả các tầng" (All Floors) view
+        ShowAllFloors = true;
+        SelectedFloorDropdownIndex = 0; // "Tất cả các tầng" is index 0
+        
+        // Set default active floor to Ground (floorId = 0) if available, else index 0
         int defaultIdx = FindFloorIndexById(0);
         if (defaultIdx < 0) defaultIdx = 0;
-        SetFloor(defaultIdx);
+        ActiveFloorIndex = defaultIdx;
+        
+        // Make all floors visible
+        visibleFloors.Clear();
+        for (int i = 0; i < floors.Count; i++)
+            visibleFloors.Add(i);
+        
+        ApplyVisibleFloors();
 
         ClampSelections();
 
@@ -302,7 +310,7 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
-    // LOAD DATA (PATCHED: stable floor ordering by FloorId.id)
+    // TẢI DỮ LIỆU TẦNG VÀ ĐIỂM ĐẾN
     // =========================================================
     void LoadFloorsAndWaypoints()
     {
@@ -390,7 +398,7 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
-    // FLOOR VISIBILITY
+    // QUẢN LÝ HIỂN THỊ TẦNG
     // =========================================================
     void ApplyVisibleFloors()
     {
@@ -504,7 +512,7 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
-    // SELECTION (FROM/TO)
+    // LỰA CHỌN ĐIỂM ĐI VÀ ĐIỂM ĐẾN
     // =========================================================
     void ClampSelections()
     {
@@ -602,7 +610,7 @@ public class NavigationController : MonoBehaviour
     }
 
     // =========================================================
-    // PATH PREVIEW + NAVIGATION
+    // XEM TRƯỚC ĐƯỜNG ĐI VÀ DẪN ĐƯỜNG
     // =========================================================
     public void PreviewPath()
     {
@@ -1309,6 +1317,11 @@ public class NavigationController : MonoBehaviour
         {
             if (isNavigating)
             {
+                // Only allow switching to the destination floor or staying on current floor
+                // Don't allow switching to intermediate floors during navigation
+                if (bestIndex != navFromFloor && bestIndex != navToFloor)
+                    return;
+
                 ActiveFloorIndex = bestIndex;
                 SelectedFloorDropdownIndex = bestIndex + 1;
 

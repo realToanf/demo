@@ -7,10 +7,11 @@ using UnityEngine.InputSystem;
 
 public class NavigationUITK : MonoBehaviour
 {
+    [Header("Thành phần UI Document và Dẫn đường")]
     public UIDocument uiDocument;
     public NavigationController nav;
 
-    [Header("Optional: Refocus Button -> CameraController")]
+    [Header("Nút quay lại góc nhìn ban đầu (Tùy chọn)")]
     public CameraController cam;
 
     DropdownField fromDropdown;
@@ -41,8 +42,8 @@ public class NavigationUITK : MonoBehaviour
     // Keep delegates so we can unsubscribe properly
     Action collapseBtnClickAction;
 
-    // ---------- Instruction Modal ----------
-    [Header("Instruction Modal")]
+    // ---------- Bảng hướng dẫn sử dụng ----------
+    [Header("Bảng hướng dẫn")]
     VisualElement instructionOverlay;
     VisualElement instructionModal;
     Button instructionCloseBtn;

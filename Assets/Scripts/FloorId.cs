@@ -2,9 +2,9 @@ using UnityEngine;
 
 public class FloorId : MonoBehaviour
 {
-    [Tooltip("Stable floor id. Example: -1=Basement, 0=T1, 1=T2 ...")]
+    [Tooltip("ID cố định của tầng. Ví dụ: -1=Hầm, 0=Tầng 1, 1=Tầng 2...")]
     public int id;
 
-    [Tooltip("Optional display name for UI. If empty, uses GameObject name.")]
+    [Tooltip("Tên hiển thị tùy chọn trên giao diện. Nếu để trống sẽ dùng tên của GameObject.")]
     public string displayName;
 }

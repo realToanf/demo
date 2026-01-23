@@ -11,7 +11,7 @@ public class CameraController : MonoBehaviour
     public Camera cam;
     public LayerMask occluderMask;
 
-    [Header("Overview Settings")]
+    [Header("Cấu hình góc nhìn Tổng quan (Overview)")]
     public float overviewPitch = 65f;
     public float overviewYaw = 45f;
     public float boundsPadding = 1.2f;
@@ -19,25 +19,25 @@ public class CameraController : MonoBehaviour
     public int maxOcclusionAdjustSteps = 8;
     public float occlusionHeightStep = 2f;
 
-    [Header("FPS Settings")]
+    [Header("Cấu hình góc nhìn Thứ nhất (FPS)")]
     public float fpsMoveSpeed = 7.5f;
     public float fpsLookSpeed = 6f;
 
-    [Header("Camera Zone Limits")]
+    [Header("Giới hạn vùng Camera")]
     public BoxCollider cameraZone;
     public float zonePadding = 0.0f;
     public bool clampPivotToZone = true;
     public bool clampHeightToZone = true;
 
-    [Header("UI Input Block")]
+    [Header("Chặn nhập liệu khi di chuột qua UI")]
     public bool blockInputByUI = false;
 
-    [Header("Refocus")]
+    [Header("Điểm lấy nét lại (Refocus)")]
     public Transform refocusPose;
     public Transform idleSnapTarget;
     public Transform refocusLookTarget;
 
-    [Header("BirdEye Settings")]
+    [Header("Cấu hình góc nhìn Chim bay (BirdEye)")]
     public float panSpeed = 5f;
     public float rotateSpeed = 15f;
     public float zoomSpeed = 1f;
@@ -50,21 +50,21 @@ public class CameraController : MonoBehaviour
     public float followHeightOffset = 20f;
     public float heightSmoothSpeed = 5f;
 
-    [Header("Touch Settings")]
+    [Header("Cấu hình Cảm ứng (Mobile)")]
     public float touchPanMultiplier = 10f;
     public float touchZoomSensitivity = 0.036f;
     public float gestureThreshold = 5f;
 
-    [Header("Pivot Target (Drag & Drop)")]
-    public Transform pivotTarget;              // drag & drop
-    public Vector3 pivotOffset = Vector3.zero; // optional
+    [Header("Điểm xoay mục tiêu (Kéo & Thả)")]
+    public Transform pivotTarget;              // đối tượng để camera xoay quanh
+    public Vector3 pivotOffset = Vector3.zero; // độ dời (tùy chọn)
 
-    [Header("Idle / Lock Behavior")]
-    public float relockAfterIdleSeconds = 5f;  // after user stops interacting, lock back to pivot
+    [Header("Hành vi khi nhàn rỗi / Tự động khóa")]
+    public float relockAfterIdleSeconds = 5f;  // tự động khóa lại sau X giây nhàn rỗi
     public bool enableIdleSpin = true;
-    public float idleSpinDelay = 0.5f;         // after locked, how long before spin starts
-    public float idleSpinSpeed = 8.0f;          // degrees/sec
-    public float idleSpinRamp = 3.0f;           // blend in/out speed
+    public float idleSpinDelay = 0.5f;         // thời gian chờ trước khi bắt đầu xoay
+    public float idleSpinSpeed = 8.0f;          // tốc độ xoay (độ/giây)
+    public float idleSpinRamp = 3.0f;           // tốc độ tăng/giảm dần
 
     bool lockCamera = false;
 
@@ -207,7 +207,9 @@ public class CameraController : MonoBehaviour
             ApplyIdleSpin();
     }
 
-    // ================= LOCK / RELOCK =================
+    // =========================================================
+    // KHÓA / NHẢ KHÓA CAMERA VỚI ĐIỂM XOAY
+    // =========================================================
     void ReleaseFromPivot()
     {
         pivotLocked = false;
@@ -309,7 +311,9 @@ public class CameraController : MonoBehaviour
         EnforceZone();
     }
 
-    // ================= MODE =================
+    // =========================================================
+    // THAY ĐỔI CHẾ ĐỘ CAMERA
+    // =========================================================
     void ToggleMode()
     {
         mode = mode == CameraMode.FPS ? CameraMode.BirdEye : CameraMode.FPS;
@@ -348,7 +352,9 @@ public class CameraController : MonoBehaviour
         }
     }
 
-    // ================= PC =================
+    // =========================================================
+    // ĐIỀU KHIỂN CHUỘT VÀ BÀN PHÍM (PC)
+    // =========================================================
     void MouseKeyboardControl()
     {
         var kb = Keyboard.current;
@@ -422,7 +428,9 @@ public class CameraController : MonoBehaviour
         }
     }
 
-    // ================= TOUCH =================
+    // =========================================================
+    // ĐIỀU KHIỂN CẢM ỨNG (MOBILE/TABLET)
+    // =========================================================
     void TouchControl()
     {
         if (mode != CameraMode.BirdEye) return;
