@@ -149,7 +149,7 @@
             {
                 "type": "UnityEngine.Vector3, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
                 "key": "ShapeBuilder.LastSize.Cube",
-                "value": "{\"m_Value\":{\"x\":1.044595718383789,\"y\":2.2533044815063478,\"z\":0.2878227233886719}}"
+                "value": "{\"m_Value\":{\"x\":1.5610122680664063,\"y\":0.8120174407958984,\"z\":1.7631492614746094}}"
             },
             {
                 "type": "UnityEngine.Vector3, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -159,7 +159,7 @@
             {
                 "type": "UnityEngine.Vector3, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
                 "key": "ShapeBuilder.LastSize.Prism",
-                "value": "{\"m_Value\":{\"x\":15.168129920959473,\"y\":6.139152526855469,\"z\":-6.339134216308594}}"
+                "value": "{\"m_Value\":{\"x\":-16.636188507080079,\"y\":3.5393195152282717,\"z\":1.670166015625}}"
             },
             {
                 "type": "UnityEngine.Vector3, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -169,7 +169,12 @@
             {
                 "type": "UnityEngine.Vector3, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
                 "key": "ShapeBuilder.LastSize.Stairs",
-                "value": "{\"m_Value\":{\"x\":-2.145191192626953,\"y\":2.861461877822876,\"z\":10.696277618408204}}"
+                "value": "{\"m_Value\":{\"x\":-3.7344589233398439,\"y\":2.2534289360046388,\"z\":1.0240631103515626}}"
+            },
+            {
+                "type": "UnityEngine.Vector3, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+                "key": "MoveElements.s_Translation",
+                "value": "{\"m_Value\":{\"x\":0.0,\"y\":1.0,\"z\":0.0}}"
             },
             {
                 "type": "UnityEngine.Quaternion, UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
@@ -260,6 +265,11 @@
                 "type": "System.Single, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089",
                 "key": "BevelEdges.size",
                 "value": "{\"m_Value\":0.20000000298023225}"
+            },
+            {
+                "type": "UnityEditor.ProBuilder.Actions.OffsetElements+CoordinateSpace, Unity.ProBuilder.Editor, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+                "key": "MoveElements.s_CoordinateSpace",
+                "value": "{\"m_Value\":0}"
             }
         ]
     }
