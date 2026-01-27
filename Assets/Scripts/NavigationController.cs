@@ -53,9 +53,9 @@ public class NavigationController : MonoBehaviour
     [Header("Thang máy (Điểm dừng tại mỗi tầng)")]
     public ElevatorShaft[] elevators; // Danh sách trục thang máy và các điểm dừng theo tầng
     [Header("Tốc độ di chuyển (giây)")]
-    public float walkSpeed = 1.4f;             // Tốc độ đi bộ (m/s) để ước lượng thời gian
-    public float elevatorSpeed = 2.5f;         // Tốc độ thang máy (m/s) để ước lượng thời gian
-    public float elevatorAvgWaitSeconds = 5f;  // Thời gian chờ thang máy trung bình (giây)
+    public float walkSpeed = 1.0f;             // Tốc độ đi bộ (m/s) để ước lượng thời gian
+    public float elevatorSpeed = 4f;         // Tốc độ thang máy (m/s) để ước lượng thời gian
+    public float elevatorAvgWaitSeconds = 2f;  // Thời gian chờ thang máy trung bình (giây)
     public bool forceVerticalAtShaftCenter = true; // Ép đoạn đi thang máy đi thẳng đứng qua tâm trục
 
     [Header("Tự động thiết lập thang máy")]
@@ -175,6 +175,7 @@ public class NavigationController : MonoBehaviour
     private int navFromFloor = -1;
     private int navToFloor = -1;
     private bool navIsCrossFloor = false;
+    private readonly HashSet<int> navRouteFloors = new(); // Tất cả các tầng mà route đi qua
 
     public Transform visualsRoot; // Nơi đặt các hiệu ứng (pings, v.v.)
 
@@ -548,12 +549,14 @@ public class NavigationController : MonoBehaviour
 
             if (dropdownIndex == 0)
             {
-                // Chọn "Tất cả các tầng" => chỉ hiển thị 2 tầng liên quan route
+                // Chọn "Tất cả các tầng" => hiển thị TẤT CẢ các tầng mà route đi qua
                 ShowAllFloors = false;
 
                 visibleFloors.Clear();
-                visibleFloors.Add(navFromFloor);
-                visibleFloors.Add(navToFloor);
+                foreach (var floor in navRouteFloors)
+                {
+                    visibleFloors.Add(floor);
+                }
                 ApplyVisibleFloors();
 
                 // Route active => giữ transparency để nhìn xuyên
@@ -566,8 +569,8 @@ public class NavigationController : MonoBehaviour
 
             int floorIndex = dropdownIndex - 1;
 
-            // Chỉ cho chọn 1 trong 2 tầng của route
-            if (floorIndex == navFromFloor || floorIndex == navToFloor)
+            // Chỉ cho chọn các tầng nằm trong route
+            if (navRouteFloors.Contains(floorIndex))
                 FocusFloorForActiveRoute(floorIndex);
 
             return;
@@ -821,6 +824,8 @@ public class NavigationController : MonoBehaviour
             return;
         }
 
+        DetectRouteFloors(navCorners);
+
         // Tính tổng độ dài để vẽ "hiện dần"
         totalDistance = ComputeTotalDistance(navCorners);
         revealDistance = 0f;
@@ -888,6 +893,36 @@ public class NavigationController : MonoBehaviour
         );
     }
 
+    void DetectRouteFloors(Vector3[] corners)
+    {
+        // Phát hiện tất cả các tầng mà route đi qua dựa trên Y position
+        navRouteFloors.Clear();
+        
+        if (corners == null || corners.Length == 0) return;
+        
+        // Thêm tầng xuất phát và đích
+        navRouteFloors.Add(navFromFloor);
+        navRouteFloors.Add(navToFloor);
+        
+        // Duyệt qua tất cả các điểm trong route
+        foreach (var corner in corners)
+        {
+            float y = corner.y;
+            
+            // Tìm tầng nào chứa điểm Y này
+            for (int i = 0; i < floorRanges.Count; i++)
+            {
+                if (y >= floorRanges[i].minY && y <= floorRanges[i].maxY)
+                {
+                    navRouteFloors.Add(i);
+                    break;
+                }
+            }
+        }
+        
+        Debug.Log($"[NAV] Route passes through {navRouteFloors.Count} floors: {string.Join(", ", navRouteFloors)}");
+    }
+
     public void CancelNavigation(bool restorePreview = true)
     {
         // Nếu có CameraController thì huỷ chuyển động camera
@@ -911,6 +946,7 @@ public class NavigationController : MonoBehaviour
         navFromFloor = -1;
         navToFloor = -1;
         navIsCrossFloor = false;
+        navRouteFloors.Clear();
 
         // Route không còn active
         IsRouteActive = false;
@@ -1009,178 +1045,244 @@ public class NavigationController : MonoBehaviour
 
     bool TryBuildBestRoute(Vector3 start, int startFloor, Vector3 end, int endFloor, out Vector3[] bestCorners)
     {
-        // Dựng route tối ưu giữa 2 điểm:
-        // - Nếu cùng tầng: ưu tiên stairsCorners (NavMesh path trực tiếp)
-        // - Nếu khác tầng: so sánh thời gian ước lượng giữa đi cầu thang và đi thang máy
-
         bestCorners = null;
 
-        Vector3[] stairsCorners = null;
-        float stairsTime = float.PositiveInfinity;
-
-        // Tính đường trực tiếp (xem như đi cầu thang/đi bộ)
-        if (TryCalculateNavCorners(start, end, out stairsCorners))
-        {
-            float stairsLen = PolylineLength(stairsCorners);
-            stairsTime = stairsLen / Mathf.Max(0.01f, walkSpeed);
-        }
-
-        // Nếu cùng tầng thì trả về đường trực tiếp nếu có
+        // Case 1: Same floor - always use direct path
         if (startFloor == endFloor)
         {
-            if (stairsCorners != null)
+            if (TryCalculateNavCorners(start, end, out var sameFloorCorners))
             {
-                bestCorners = stairsCorners;
+                bestCorners = sameFloorCorners;
                 return true;
             }
             return false;
         }
 
-        // Khác tầng: tìm route thang máy tốt nhất
-        float bestElevTime = float.PositiveInfinity;
-        List<Vector3> bestElevPts = null;
+        // Case 2: Cross-floor - try multiple strategies
+        float bestTime = float.PositiveInfinity;
+        List<Vector3> bestPath = null;
+        string bestStrategy = "";
 
+        // Strategy A: Direct stairs/ramps (entire route via NavMesh)
+        if (TryCalculateNavCorners(start, end, out var directCorners))
+        {
+            float directTime = CalculateStairsTime(directCorners);
+            if (directTime < bestTime)
+            {
+                bestTime = directTime;
+                bestPath = new List<Vector3>(directCorners);
+                bestStrategy = "Direct stairs";
+            }
+            Debug.Log($"[ROUTE] Direct stairs: {directTime:F2}s");
+        }
+
+        // Strategy B: Pure elevator routes (start → elevator → end)
         if (elevators != null)
         {
-            Debug.Log($"[ELEV] TryBuildBestRoute startFloor={startFloor} endFloor={endFloor} elevators={elevators?.Length ?? 0}");
-
-            for (int e = 0; e < elevators.Length; e++)
+            foreach (var elev in elevators)
             {
-                var elev = elevators[e];
-                if (elev == null) continue;
-
-                // Kiểm tra shaft này có cửa ở tầng start không
-                if (!TryGetElevatorDoors(elev, startFloor, out var startDoors))
+                if (TryBuildElevatorRoute(elev, start, startFloor, end, endFloor, out var elevPath, out float elevTime))
                 {
-                    Debug.LogWarning($"[ELEV] '{elev.name}' has NO doors on startFloor={startFloor}");
-                    continue;
-                }
-
-                // Kiểm tra shaft này có cửa ở tầng end không
-                if (!TryGetElevatorDoors(elev, endFloor, out var endDoors))
-                {
-                    Debug.LogWarning($"[ELEV] '{elev.name}' has NO doors on endFloor={endFloor}");
-                    continue;
-                }
-
-                // Thử mọi cặp cửa A (tầng start) và cửa B (tầng end)
-                for (int ai = 0; ai < startDoors.Length; ai++)
-                {
-                    var dA = startDoors[ai];
-                    if (dA == null) continue;
-
-                    Vector3 doorA = dA.position;
-
-                    // SamplePosition để đảm bảo điểm cửa nằm trên NavMesh
-                    if (!NavMesh.SamplePosition(doorA, out var hitA, 8f, NavMesh.AllAreas))
+                    if (elevTime < bestTime)
                     {
-                        Debug.LogWarning($"[ELEV] SamplePosition FAIL doorA '{dA.name}' floor={startFloor} pos={dA.position}");
-                        continue;
+                        bestTime = elevTime;
+                        bestPath = elevPath;
+                        bestStrategy = $"Elevator '{elev.name}'";
                     }
-                    doorA = hitA.position;
-
-                    // Path từ start tới cửa A
-                    if (!TryCalculateNavCorners(start, doorA, out var aCorners))
-                    {
-                        Debug.LogWarning($"[ELEV] Path FAIL start->doorA doorA='{dA.name}' floor={startFloor} start={start} doorA={doorA}");
-                        continue;
-                    }
-
-                    for (int bi = 0; bi < endDoors.Length; bi++)
-                    {
-                        var dB = endDoors[bi];
-                        if (dB == null) continue;
-
-                        Vector3 doorB = dB.position;
-
-                        // SamplePosition để đảm bảo cửa B nằm trên NavMesh
-                        if (!NavMesh.SamplePosition(doorB, out var hitB, 8f, NavMesh.AllAreas))
-                        {
-                            Debug.LogWarning($"[ELEV] SamplePosition FAIL doorB '{dB.name}' floor={endFloor} pos={dB.position}");
-                            continue;
-                        }
-                        doorB = hitB.position;
-
-                        // Path từ cửa B tới end
-                        if (!TryCalculateNavCorners(doorB, end, out var bCorners))
-                        {
-                            Debug.LogWarning($"[ELEV] Path FAIL doorB->end doorB='{dB.name}' floor={endFloor} doorB={doorB} end={end}");
-                            continue;
-                        }
-
-                        // Ghép route: start -> doorA -> ride -> doorB -> end
-                        var pts = new List<Vector3>(aCorners.Length + bCorners.Length + 6);
-
-                        for (int i = 0; i < aCorners.Length; i++) pts.Add(aCorners[i]);
-
-                        var ride = BuildElevatorRide(elev, doorA, doorB);
-
-                        // Tránh trùng điểm đầu khi nối
-                        if (pts.Count > 0 && ride.Count > 0 && (pts[pts.Count - 1] - ride[0]).sqrMagnitude < 0.0001f)
-                            ride.RemoveAt(0);
-                        pts.AddRange(ride);
-
-                        // Tránh trùng điểm đầu khi nối phần bCorners
-                        int bStart = 0;
-                        if (pts.Count > 0 && bCorners.Length > 0 && (pts[pts.Count - 1] - bCorners[0]).sqrMagnitude < 0.0001f)
-                            bStart = 1;
-                        for (int i = bStart; i < bCorners.Length; i++) pts.Add(bCorners[i]);
-
-                        // Ước lượng thời gian:
-                        // - walkTime: thời gian đi bộ tới cửa + đi bộ từ cửa tới đích
-                        float walkLen = PolylineLength(aCorners) + PolylineLength(bCorners);
-                        float walkTime = walkLen / Mathf.Max(0.01f, walkSpeed);
-
-                        // - rideTime: thời gian đi thang máy theo độ cao chênh lệch
-                        float verticalMeters = Mathf.Abs(doorB.y - doorA.y);
-                        float rideTime = verticalMeters / Mathf.Max(0.01f, elevatorSpeed);
-
-                        // - totalTime: walkTime + thời gian chờ thang + rideTime
-                        float totalTime = walkTime + elevatorAvgWaitSeconds + rideTime;
-
-                        // Giữ route tốt nhất (thời gian thấp nhất)
-                        if (totalTime < bestElevTime)
-                        {
-                            bestElevTime = totalTime;
-                            bestElevPts = pts;
-                        }
-                    }
+                    Debug.Log($"[ROUTE] Elevator '{elev.name}': {elevTime:F2}s");
                 }
             }
         }
 
-        // Nếu tìm được route thang máy thì ưu tiên trả về
-        if (bestElevPts != null && bestElevPts.Count >= 2)
+        // Strategy C: Hybrid routes (stairs to intermediate floor, then elevator)
+        // Only try this for routes spanning 2+ floors
+        if (Mathf.Abs(endFloor - startFloor) >= 2 && elevators != null)
         {
-            bestCorners = bestElevPts.ToArray();
+            foreach (var elev in elevators)
+            {
+                // Try: walk to nearest elevator floor, then ride up/down
+                if (TryBuildHybridRoute(elev, start, startFloor, end, endFloor, out var hybridPath, out float hybridTime))
+                {
+                    if (hybridTime < bestTime)
+                    {
+                        bestTime = hybridTime;
+                        bestPath = hybridPath;
+                        bestStrategy = $"Hybrid via '{elev.name}'";
+                    }
+                    Debug.Log($"[ROUTE] Hybrid via '{elev.name}': {hybridTime:F2}s");
+                }
+            }
+        }
+
+        // Return best route found
+        if (bestPath != null && bestPath.Count >= 2)
+        {
+            bestCorners = bestPath.ToArray();
+            Debug.Log($"[ROUTE] ✓ Best: {bestStrategy} ({bestTime:F2}s, {bestPath.Count} points)");
             return true;
         }
 
-        // Nếu không có thang máy, so sánh lại với đường trực tiếp nếu có
-        Debug.Log($"[ELEV] stairsTime={stairsTime}, bestElevTime={bestElevTime}, hasStairsCorners={(stairsCorners != null)}, hasBestElevPts={(bestElevPts != null)}");
-
-        if (stairsTime <= bestElevTime)
-        {
-            if (stairsCorners != null)
-            {
-                bestCorners = stairsCorners;
-                return true;
-            }
-        }
-        else
-        {
-            if (bestElevPts != null && bestElevPts.Count >= 2)
-            {
-                bestCorners = bestElevPts.ToArray();
-                return true;
-            }
-        }
-
-        // Fallback cuối cùng: trả về cái nào có
-        if (stairsCorners != null) { bestCorners = stairsCorners; return true; }
-        if (bestElevPts != null) { bestCorners = bestElevPts.ToArray(); return true; }
-
+        Debug.LogWarning($"[ROUTE] ✗ No valid route found!");
         return false;
+    }
+
+    // Calculate time for walking/stairs with vertical penalty
+    float CalculateStairsTime(Vector3[] corners)
+    {
+        if (corners == null || corners.Length < 2) return float.PositiveInfinity;
+        
+        float horizontalDist = 0f;
+        float verticalDist = 0f;
+        
+        for (int i = 1; i < corners.Length; i++)
+        {
+            Vector3 a = corners[i - 1];
+            Vector3 b = corners[i];
+            horizontalDist += Vector3.Distance(new Vector3(a.x, 0, a.z), new Vector3(b.x, 0, b.z));
+            verticalDist += Mathf.Abs(b.y - a.y);
+        }
+        
+        float stairSpeed = walkSpeed * 0.6f; // Stairs are 40% slower than flat walking
+        return (horizontalDist / walkSpeed) + (verticalDist / stairSpeed);
+    }
+
+    // Try to build a pure elevator route (start → elevator door → ride → elevator door → end)
+    bool TryBuildElevatorRoute(ElevatorShaft elev, Vector3 start, int startFloor, Vector3 end, int endFloor, 
+        out List<Vector3> path, out float totalTime)
+    {
+        path = null;
+        totalTime = float.PositiveInfinity;
+
+        if (!TryGetElevatorDoors(elev, startFloor, out var startDoors)) return false;
+        if (!TryGetElevatorDoors(elev, endFloor, out var endDoors)) return false;
+
+        foreach (var doorA_tf in startDoors)
+        {
+            if (doorA_tf == null) continue;
+            
+            Vector3 doorA = doorA_tf.position;
+            if (!NavMesh.SamplePosition(doorA, out var hitA, 8f, NavMesh.AllAreas)) continue;
+            doorA = hitA.position;
+
+            if (!TryCalculateNavCorners(start, doorA, out var segA)) continue;
+
+            foreach (var doorB_tf in endDoors)
+            {
+                if (doorB_tf == null) continue;
+                
+                Vector3 doorB = doorB_tf.position;
+                if (!NavMesh.SamplePosition(doorB, out var hitB, 8f, NavMesh.AllAreas)) continue;
+                doorB = hitB.position;
+
+                if (!TryCalculateNavCorners(doorB, end, out var segC)) continue;
+
+                // Build path: start → doorA → ride → doorB → end
+                var pts = new List<Vector3>();
+                pts.AddRange(segA);
+                
+                var ride = BuildElevatorRide(elev, doorA, doorB);
+                if (pts.Count > 0 && ride.Count > 0 && Vector3.Distance(pts[pts.Count - 1], ride[0]) < 0.01f)
+                    ride.RemoveAt(0);
+                pts.AddRange(ride);
+                
+                int cStart = (pts.Count > 0 && segC.Length > 0 && Vector3.Distance(pts[pts.Count - 1], segC[0]) < 0.01f) ? 1 : 0;
+                for (int i = cStart; i < segC.Length; i++) pts.Add(segC[i]);
+
+                // Calculate time
+                float walkTime = CalculateStairsTime(segA) + CalculateStairsTime(segC);
+                float rideTime = Mathf.Abs(doorB.y - doorA.y) / Mathf.Max(0.01f, elevatorSpeed);
+                float time = walkTime + elevatorAvgWaitSeconds + rideTime;
+
+                if (time < totalTime)
+                {
+                    totalTime = time;
+                    path = pts;
+                }
+            }
+        }
+
+        return path != null && path.Count >= 2;
+    }
+
+    // Try hybrid route: stairs to intermediate elevator floor, then ride to destination floor
+    bool TryBuildHybridRoute(ElevatorShaft elev, Vector3 start, int startFloor, Vector3 end, int endFloor,
+        out List<Vector3> path, out float totalTime)
+    {
+        path = null;
+        totalTime = float.PositiveInfinity;
+
+        if (elev.stops == null || elev.stops.Length < 2) return false;
+
+        // Find intermediate floors that have elevator access
+        var intermediateFloors = new List<int>();
+        foreach (var stop in elev.stops)
+        {
+            int f = stop.floorIndex;
+            // Must be between start and end (or equal to end)
+            bool isBetween = (f >= Mathf.Min(startFloor, endFloor) && f <= Mathf.Max(startFloor, endFloor));
+            if (isBetween && f != startFloor)
+            {
+                intermediateFloors.Add(f);
+            }
+        }
+
+        if (intermediateFloors.Count == 0) return false;
+
+        // Try each intermediate floor
+        foreach (int midFloor in intermediateFloors)
+        {
+            if (!TryGetElevatorDoors(elev, midFloor, out var midDoors)) continue;
+            if (!TryGetElevatorDoors(elev, endFloor, out var endDoors)) continue;
+
+            foreach (var midDoor_tf in midDoors)
+            {
+                if (midDoor_tf == null) continue;
+                
+                Vector3 midDoor = midDoor_tf.position;
+                if (!NavMesh.SamplePosition(midDoor, out var hitMid, 8f, NavMesh.AllAreas)) continue;
+                midDoor = hitMid.position;
+
+                // Segment 1: start → midDoor (via stairs/walking)
+                if (!TryCalculateNavCorners(start, midDoor, out var seg1)) continue;
+
+                foreach (var endDoor_tf in endDoors)
+                {
+                    if (endDoor_tf == null) continue;
+                    
+                    Vector3 endDoor = endDoor_tf.position;
+                    if (!NavMesh.SamplePosition(endDoor, out var hitEnd, 8f, NavMesh.AllAreas)) continue;
+                    endDoor = hitEnd.position;
+
+                    // Segment 3: endDoor → end (via walking)
+                    if (!TryCalculateNavCorners(endDoor, end, out var seg3)) continue;
+
+                    // Build path: seg1 + elevator ride + seg3
+                    var pts = new List<Vector3>();
+                    pts.AddRange(seg1);
+
+                    var ride = BuildElevatorRide(elev, midDoor, endDoor);
+                    if (pts.Count > 0 && ride.Count > 0 && Vector3.Distance(pts[pts.Count - 1], ride[0]) < 0.01f)
+                        ride.RemoveAt(0);
+                    pts.AddRange(ride);
+
+                    int s3Start = (pts.Count > 0 && seg3.Length > 0 && Vector3.Distance(pts[pts.Count - 1], seg3[0]) < 0.01f) ? 1 : 0;
+                    for (int i = s3Start; i < seg3.Length; i++) pts.Add(seg3[i]);
+
+                    // Calculate time
+                    float walkTime = CalculateStairsTime(seg1) + CalculateStairsTime(seg3);
+                    float rideTime = Mathf.Abs(endDoor.y - midDoor.y) / Mathf.Max(0.01f, elevatorSpeed);
+                    float time = walkTime + elevatorAvgWaitSeconds + rideTime;
+
+                    if (time < totalTime)
+                    {
+                        totalTime = time;
+                        path = pts;
+                    }
+                }
+            }
+        }
+
+        return path != null && path.Count >= 2;
     }
 
     // =========================================================
@@ -1575,8 +1677,8 @@ public class NavigationController : MonoBehaviour
         {
             if (isNavigating)
             {
-                // Khi camera đang chạy: chỉ cho phép chuyển sang tầng start hoặc tầng end
-                if (bestIndex != navFromFloor && bestIndex != navToFloor)
+                // Khi camera đang chạy: cho phép chuyển sang BẤT KỲ tầng nào mà route đi qua
+                if (!navRouteFloors.Contains(bestIndex))
                     return;
 
                 ActiveFloorIndex = bestIndex;
