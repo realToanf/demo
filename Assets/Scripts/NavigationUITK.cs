@@ -45,6 +45,9 @@ public class NavigationUITK : MonoBehaviour
     // Trạng thái "đang nhấn/giữ" trên UI (để chặn input camera)
     bool uiPointerDown = false;
 
+    // Theo dõi dropdown khi đang mở (để chặn input camera)
+    bool anyDropdownOpen = false;
+
     // Giữ delegate để unsubscribe đúng cách
     Action collapseBtnClickAction;
 
@@ -162,6 +165,11 @@ public class NavigationUITK : MonoBehaviour
         // --- UI -> Controller ---
         // Khi đổi tầng từ dropdown => gọi nav.SetFloorFromDropdown theo index dropdown
         floorDropdown.RegisterValueChangedCallback(_ => nav.SetFloorFromDropdown(floorDropdown.index));
+
+        // Theo dõi dropdown mở/đóng để chặn input camera
+        RegisterDropdownTracking(fromDropdown);
+        RegisterDropdownTracking(toDropdown);
+        RegisterDropdownTracking(floorDropdown);
 
         // Khi đổi điểm bắt đầu => set From và cập nhật trạng thái nút navigate
         fromDropdown.RegisterValueChangedCallback(_ =>
@@ -341,6 +349,41 @@ public class NavigationUITK : MonoBehaviour
         }
     }
 
+    void RegisterDropdownTracking(DropdownField dropdown)
+    {
+        if (dropdown == null) return;
+
+        // Lắng nghe khi dropdown mở popup
+        dropdown.RegisterCallback<PointerDownEvent>(e =>
+        {
+            // Khi click vào dropdown, đánh dấu có dropdown đang mở
+            anyDropdownOpen = true;
+            UpdateBlockFromState();
+        }, TrickleDown.TrickleDown);
+
+        // Lắng nghe khi giá trị thay đổi (nghĩa là người dùng đã chọn => đóng popup)
+        dropdown.RegisterValueChangedCallback(e =>
+        {
+            // Delay một frame để đảm bảo popup đã đóng hoàn toàn
+            dropdown.schedule.Execute(() =>
+            {
+                anyDropdownOpen = false;
+                UpdateBlockFromState();
+            }).ExecuteLater(50); // 50ms delay
+        });
+
+        // Lắng nghe khi focus mất (người dùng click ra ngoài => đóng popup)
+        dropdown.RegisterCallback<BlurEvent>(e =>
+        {
+            // Delay một chút để đảm bảo popup đã đóng
+            dropdown.schedule.Execute(() =>
+            {
+                anyDropdownOpen = false;
+                UpdateBlockFromState();
+            }).ExecuteLater(50);
+        });
+    }
+
     void RegisterBlockerAllow(VisualElement ve)
     {
         if (ve == null) return;
@@ -438,8 +481,9 @@ public class NavigationUITK : MonoBehaviour
 
         // Chỉ chặn input camera khi:
         // - Modal đang mở, hoặc
-        // - Người dùng đang nhấn/giữ trên UI
-        cam.blockInputByUI = isModalOpen || uiPointerDown;
+        // - Người dùng đang nhấn/giữ trên UI, hoặc
+        // - Có dropdown đang mở
+        cam.blockInputByUI = isModalOpen || uiPointerDown || anyDropdownOpen;
     }
 
     void Update()
@@ -450,7 +494,8 @@ public class NavigationUITK : MonoBehaviour
         // WATCHDOG:
         // UI Toolkit có thể bị mất PointerUp (dropdown popup/capture, v.v.)
         // Nếu thực tế không còn nút chuột/touch nào đang nhấn thì release UI lock.
-        if (!isModalOpen && uiPointerDown)
+        // Không reset khi dropdown đang mở
+        if (!isModalOpen && uiPointerDown && !anyDropdownOpen)
         {
             var mouse = Mouse.current;
             bool anyMouseDown =
