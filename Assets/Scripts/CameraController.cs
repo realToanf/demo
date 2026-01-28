@@ -99,6 +99,18 @@ public class CameraController : MonoBehaviour
     public float idleSpinSpeed = 8.0f;             // tốc độ spin (độ/giây)
     public float idleSpinRamp = 3.0f;              // tốc độ tăng/giảm dần weight spin
 
+    // =========================
+    // Cấu hình Cinematic smoothing (chỉ dùng cho animation pan-out/overview)
+    // =========================
+    [Header("Cinematic smoothing")]
+    public float liftDuration = 0.8f;              // how long the initial lift takes
+    public float overviewBlendDuration = 1.2f;     // how long to blend into the overview pose
+    public AnimationCurve ease = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    public float posDampTime = 0.12f;              // SmoothDamp time (smaller = snappier)
+    public float rotDampTime = 0.10f;              // rotation damping
+    float _panDownStartTimer = float.NaN;
+    float _panDownYVel = 0f;
+
     // Khi true: coroutine MoveRoutine đang “điều khiển” camera (khóa input)
     bool lockCamera = false;
 
@@ -674,6 +686,9 @@ public class CameraController : MonoBehaviour
         // Bật lockCamera để Update không xử lý input trong lúc move
         lockCamera = true;
 
+        _panDownStartTimer = float.NaN;
+        _panDownYVel = 0f;
+
         if (corners.Length < 2)
         {
             lockCamera = false;
@@ -685,11 +700,24 @@ public class CameraController : MonoBehaviour
         Vector3 liftTarget = corners[0] + Vector3.up * (height * 0.3f);
         Quaternion topDownRot = Quaternion.Euler(90f, 0f, 0f);
 
-        while (Vector3.Distance(transform.position, liftTarget) > 0.05f)
         {
-            transform.position = Vector3.MoveTowards(transform.position, liftTarget, moveSpeed * Time.deltaTime);
-            transform.rotation = Quaternion.Slerp(transform.rotation, topDownRot, rotateSpeed * Time.deltaTime);
-            yield return null;
+            float tLift = 0f;
+            Vector3 startPos = transform.position;
+            Quaternion startRot = transform.rotation;
+
+            while (tLift < 1f)
+            {
+                tLift += Time.deltaTime / Mathf.Max(0.0001f, liftDuration);
+                float a = Ease01(ease, tLift);
+
+                transform.position = Vector3.Lerp(startPos, liftTarget, a);
+                transform.rotation = Quaternion.Slerp(startRot, topDownRot, a);
+
+                yield return null;
+            }
+
+            transform.position = liftTarget;
+            transform.rotation = topDownRot;
         }
 
         // 2) Di chuyển theo từng corner (giữ XZ theo target, Y lerp theo followHeightOffset)
@@ -700,6 +728,20 @@ public class CameraController : MonoBehaviour
             while (Vector3.Distance(new Vector2(transform.position.x, transform.position.z),
                    new Vector2(target.x, target.z)) > 0.05f)
             {
+                float rampMul = 1f;
+
+                if (i == 1)
+                {
+                    // ramp over ~0.7s, starting at 15% speed
+                    if (!float.IsNaN(_panDownStartTimer))
+                        _panDownStartTimer += Time.deltaTime;
+                    else
+                        _panDownStartTimer = Time.deltaTime;
+
+                    float ramp = Mathf.Clamp01(_panDownStartTimer / 2.0f);
+                    rampMul = Mathf.Lerp(0.0f, 1f, ramp);
+                }
+
                 Vector3 desiredPos = Vector3.MoveTowards(
                     transform.position,
                     new Vector3(target.x, transform.position.y, target.z),
@@ -707,9 +749,19 @@ public class CameraController : MonoBehaviour
                 );
 
                 float desiredY = target.y + followHeightOffset;
-                float newY = Mathf.Lerp(transform.position.y, desiredY, (heightSmoothSpeed * 0.6f) * Time.deltaTime);
+                float heightLerpSpeed = (heightSmoothSpeed * 0.6f);
+
+                float newY = Mathf.Lerp(transform.position.y, desiredY, heightLerpSpeed * Time.deltaTime);
+
+                if (i == 1)
+                {
+                    float ySmoothTime = Mathf.Lerp(0.9f, 0.12f, rampMul);
+                    float yMaxSpeed = Mathf.Lerp(0.5f, 999f, rampMul);
+                    newY = Mathf.SmoothDamp(transform.position.y, desiredY, ref _panDownYVel, ySmoothTime, yMaxSpeed);
+                }
 
                 transform.position = new Vector3(desiredPos.x, newY, desiredPos.z);
+
 
                 // Callback cho từng bước (trả về điểm trên route theo XZ hiện tại)
                 onStep?.Invoke(new Vector3(transform.position.x, target.y, transform.position.z));
@@ -730,16 +782,27 @@ public class CameraController : MonoBehaviour
         transform.position = fromPos;
         transform.rotation = fromRot;
 
-        float t = 0f;
-        while (t < 1f)
         {
-            t += Time.deltaTime * (moveSpeed * 0.3f);
-            float a = Mathf.Clamp01(t);
+            float t = 0f;
+            Vector3 vel = Vector3.zero;
+            Vector3 angVel = Vector3.zero;
 
-            transform.position = Vector3.Lerp(fromPos, toPos, a);
-            transform.rotation = Quaternion.Slerp(fromRot, toRot, a);
+            while (t < 1f)
+            {
+                t += Time.deltaTime / Mathf.Max(0.0001f, overviewBlendDuration);
+                float a = Ease01(ease, t);
 
-            yield return null;
+                Vector3 blendPos = Vector3.Lerp(fromPos, toPos, a);
+                Quaternion blendRot = Quaternion.Slerp(fromRot, toRot, a);
+
+                transform.position = Vector3.SmoothDamp(transform.position, blendPos, ref vel, posDampTime);
+                transform.rotation = SmoothDampRotation(transform.rotation, blendRot, ref angVel, rotDampTime);
+
+                yield return null;
+            }
+
+            transform.position = toPos;
+            transform.rotation = toRot;
         }
 
         // Callback complete
@@ -1056,5 +1119,24 @@ public class CameraController : MonoBehaviour
         }
 
         return false;
+    }
+
+    static float Ease01(AnimationCurve curve, float t)
+    {
+        t = Mathf.Clamp01(t);
+        return curve != null ? curve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
+    }
+
+    static Quaternion SmoothDampRotation(Quaternion current, Quaternion target, ref Vector3 angularVel, float smoothTime)
+    {
+        // Convert to euler and SmoothDampAngle each axis (simple + stable for cameras)
+        Vector3 cur = current.eulerAngles;
+        Vector3 tar = target.eulerAngles;
+
+        cur.x = Mathf.SmoothDampAngle(cur.x, tar.x, ref angularVel.x, smoothTime);
+        cur.y = Mathf.SmoothDampAngle(cur.y, tar.y, ref angularVel.y, smoothTime);
+        cur.z = Mathf.SmoothDampAngle(cur.z, tar.z, ref angularVel.z, smoothTime);
+
+        return Quaternion.Euler(cur);
     }
 }
