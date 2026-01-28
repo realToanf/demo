@@ -123,6 +123,7 @@ public class NavigationUITK : MonoBehaviour
 
         // Đăng ký "lưới an toàn" toàn cục: nếu PointerUp bị nuốt vẫn reset được uiPointerDown
         RegisterGlobalPointerRelease();
+        RegisterGlobalDropdownRelease();
 
         // Đăng ký chặn input camera ngay lập tức khi thao tác UI (nhưng vẫn cho button click hoạt động)
         RegisterImmediateUiBlocking();
@@ -353,35 +354,65 @@ public class NavigationUITK : MonoBehaviour
     {
         if (dropdown == null) return;
 
-        // Lắng nghe khi dropdown mở popup
         dropdown.RegisterCallback<PointerDownEvent>(e =>
         {
-            // Khi click vào dropdown, đánh dấu có dropdown đang mở
             anyDropdownOpen = true;
             UpdateBlockFromState();
+            // Don't StopPropagation; let the dropdown open normally
         }, TrickleDown.TrickleDown);
 
-        // Lắng nghe khi giá trị thay đổi (nghĩa là người dùng đã chọn => đóng popup)
-        dropdown.RegisterValueChangedCallback(e =>
+        // Selecting an item => dropdown closes
+        dropdown.RegisterValueChangedCallback(_ =>
         {
-            // Delay một frame để đảm bảo popup đã đóng hoàn toàn
-            dropdown.schedule.Execute(() =>
-            {
-                anyDropdownOpen = false;
-                UpdateBlockFromState();
-            }).ExecuteLater(50); // 50ms delay
-        });
-
-        // Lắng nghe khi focus mất (người dùng click ra ngoài => đóng popup)
-        dropdown.RegisterCallback<BlurEvent>(e =>
-        {
-            // Delay một chút để đảm bảo popup đã đóng
-            dropdown.schedule.Execute(() =>
+            rootVE.schedule.Execute(() =>
             {
                 anyDropdownOpen = false;
                 UpdateBlockFromState();
             }).ExecuteLater(50);
         });
+    }
+
+    void CheckAllDropdownsClosed()
+    {
+        // Check if ANY of our tracked dropdowns currently has focus
+        bool anyHasFocus = false;
+        
+        if (panel != null && panel.focusController != null)
+        {
+            var focused = panel.focusController.focusedElement as VisualElement;
+            
+            if (focused != null)
+            {
+                // Check if the focused element IS one of our dropdowns
+                if (focused == fromDropdown || focused == toDropdown || focused == floorDropdown)
+                {
+                    anyHasFocus = true;
+                }
+                else
+                {
+                    // Check if focused element is a CHILD of any dropdown (the popup list)
+                    var parent = focused;
+                    while (parent != null)
+                    {
+                        if (parent == fromDropdown || parent == toDropdown || parent == floorDropdown)
+                        {
+                            anyHasFocus = true;
+                            break;
+                        }
+                        parent = parent.parent;
+                    }
+                }
+            }
+        }
+        
+        anyDropdownOpen = anyHasFocus;
+        UpdateBlockFromState();
+        
+        // If still open, schedule another check
+        if (anyDropdownOpen)
+        {
+            rootVE.schedule.Execute(CheckAllDropdownsClosed).ExecuteLater(100);
+        }
     }
 
     void RegisterBlockerAllow(VisualElement ve)
@@ -484,6 +515,7 @@ public class NavigationUITK : MonoBehaviour
         // - Người dùng đang nhấn/giữ trên UI, hoặc
         // - Có dropdown đang mở
         cam.blockInputByUI = isModalOpen || uiPointerDown || anyDropdownOpen;
+        Debug.Log($"BLOCK? {(cam!=null && cam.blockInputByUI)} | modal={isModalOpen} down={uiPointerDown} dd={anyDropdownOpen}");
     }
 
     void Update()
@@ -787,5 +819,38 @@ public class NavigationUITK : MonoBehaviour
             if (isCollapsed) card.AddToClassList("card--collapsed");
             else card.RemoveFromClassList("card--collapsed");
         }
+    }
+
+    void RegisterGlobalDropdownRelease()
+    {
+        if (rootVE == null) return;
+
+        rootVE.RegisterCallback<PointerDownEvent>(e =>
+        {
+            if (!anyDropdownOpen) return;
+
+            var target = e.target as VisualElement;
+            if (target == null) return;
+
+            // Clicking on the dropdown field itself should NOT release the latch
+            if (IsInside(target, fromDropdown) || IsInside(target, toDropdown) || IsInside(target, floorDropdown))
+                return;
+
+            // Otherwise: user clicked elsewhere => treat as dropdown closed
+            anyDropdownOpen = false;
+            UpdateBlockFromState();
+        }, TrickleDown.TrickleDown);
+    }
+
+    bool IsInside(VisualElement target, VisualElement ancestor)
+    {
+        if (ancestor == null) return false;
+        var p = target;
+        while (p != null)
+        {
+            if (p == ancestor) return true;
+            p = p.parent;
+        }
+        return false;
     }
 }
