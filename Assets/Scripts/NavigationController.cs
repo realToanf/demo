@@ -99,6 +99,11 @@ public class NavigationController : MonoBehaviour
     public string propsRootName = "Props";         // Tên node gốc chứa props trong mỗi tầng
     public bool hidePropsWhenTransparent = true;   // Ẩn props khi bật trong suốt
 
+    [Header("Ẩn label khi zoom xa")]
+    public bool hideLabelsWhenFar = true;
+    public float hideLabelDistance = 50f;   // Ẩn label khi xa hơn 50 unit
+    public float showLabelDistance = 30f;
+
     // Danh sách cache Transform "Props" theo từng tầng (để bật/tắt nhanh)
     private readonly List<Transform> floorPropsRoots = new();
 
@@ -180,18 +185,20 @@ public class NavigationController : MonoBehaviour
     public Transform visualsRoot; // Nơi đặt các hiệu ứng (pings, v.v.)
 
     // ---------------------------------------------------------
-    // CẢI TIẾN LABEL
+    // LABEL
     // ---------------------------------------------------------
     private readonly List<TextMeshPro> allLabelTmps = new(); // Cache các TMP label để scale theo khoảng cách
     private Material sharedLabelMaterial; // Material dùng chung cho nhãn (tối ưu và đồng nhất)
+    private readonly Dictionary<Transform, GameObject> pointToLabel = new();
 
     // ---------------------------------------------------------
-    // Hỗ trợ "xem trước" route khác tầng (trong suốt + có thể show all)
+    // Hỗ trợ "xem trước" route khác tầng (trong suốt)
     // ---------------------------------------------------------
     private bool previewCrossFloorActive = false;   // Đang bật preview khác tầng hay không
     private bool previewForcedAllFloors = false;    // Preview có ép show all floors không
     private int previewRestoreFloorIndex = 0;       // Lưu tầng để restore khi tắt preview
     private int previewRestoreDropdownIndex = 1;    // Lưu dropdown để restore khi tắt preview
+
 
     // =========================================================
     // KHỞI TẠO HỆ THỐNG
@@ -309,26 +316,40 @@ public class NavigationController : MonoBehaviour
 
     void LateUpdate()
     {
-        // Không có camera thì không scale nhãn
         if (mainCamera == null) return;
 
-        // Duyệt tất cả nhãn và scale theo khoảng cách camera
         for (int i = 0; i < allLabelTmps.Count; i++)
         {
             var tmp = allLabelTmps[i];
             if (!tmp) continue;
-            if (!tmp.gameObject.activeInHierarchy) continue;
 
-            // Tính khoảng cách từ camera đến nhãn
             float d = Vector3.Distance(mainCamera.position, tmp.transform.position);
 
-            // Tính t theo nội suy từ khoảng cách (start -> end)
+            // 1) Rule nền tảng theo state (route active => chỉ endpoint)
+            bool allowed = IsAllowedByState(tmp);
+
+            // 2) Rule hide-when-far (chỉ áp nếu label đang "allowed")
+            if (allowed && hideLabelsWhenFar)
+            {
+                // Nếu là endpoint label thì bạn có thể CHỌN:
+                // A) vẫn hide theo distance (nếu bạn muốn)
+                // B) luôn hiện endpoint, bỏ hide theo distance
+                // Mình mặc định: luôn hiện endpoint
+                if (!IsEndpointLabel(tmp))
+                {
+                    if (d > hideLabelDistance) allowed = false;
+                }
+            }
+
+            // 3) Apply visibility theo kết quả cuối cùng
+            if (tmp.gameObject.activeSelf != allowed)
+                tmp.gameObject.SetActive(allowed);
+
+            if (!allowed) continue;
+
+            // 4) Scale (chỉ scale khi đang hiện)
             float t = Mathf.InverseLerp(scaleStartDistance, scaleEndDistance, d);
-
-            // Tính scale s trong khoảng min -> max
             float s = Mathf.Lerp(minLabelSize, maxLabelSize, t);
-
-            // Áp scale đồng đều
             tmp.transform.localScale = Vector3.one * s;
         }
     }
@@ -369,6 +390,7 @@ public class NavigationController : MonoBehaviour
         floorPoints.Clear();
         floorLabels.Clear();
         floorNames.Clear();
+        pointToLabel.Clear();
 
         floorPropsRoots.Clear();
 
@@ -432,7 +454,9 @@ public class NavigationController : MonoBehaviour
                     points.Add(t);
 
                     // Tạo nhãn hiển thị cho waypoint
-                    labels.Add(CreateLabel(t));
+                    var labelGo = CreateLabel(t);
+                    labels.Add(labelGo);
+                    pointToLabel[t] = labelGo;
 
                     // Lưu danh sách "tất cả điểm" để UI chọn
                     allPoints.Add(t);
@@ -476,12 +500,16 @@ public class NavigationController : MonoBehaviour
 
     void UpdateLabelsVisibility()
     {
-        // Tắt hết nhãn trước
+        if (IsRouteActive || isNavigating)
+        {
+            ShowOnlyEndpointLabels();
+            return;
+        }
+
         foreach (var kv in floorLabels)
             foreach (var label in kv.Value)
                 if (label != null) label.SetActive(false);
 
-        // Bật nhãn của các tầng đang hiển thị
         foreach (var idx in visibleFloors)
         {
             if (!floorLabels.ContainsKey(idx)) continue;
@@ -625,9 +653,8 @@ public class NavigationController : MonoBehaviour
         // Huỷ route hiện tại và dọn dẹp (không restore preview)
         CancelNavigation(false);
 
-        // Nếu đang show all floors thì bật transparency khi chọn điểm
-        if (ShowAllFloors) ApplyNavTransparency(true);
-        else ApplyNavTransparency(false);
+        // Nếu đang show all floors thì tắt transparency khi chọn điểm
+        if (ShowAllFloors) ApplyNavTransparency(false);
 
         // Lưu điểm bắt đầu
         SelectedFrom = Mathf.Clamp(index, 0, allPoints.Count - 1);
@@ -646,9 +673,8 @@ public class NavigationController : MonoBehaviour
         // Huỷ route hiện tại và dọn dẹp (không restore preview)
         CancelNavigation(false);
 
-        // Nếu đang show all floors thì bật transparency khi chọn điểm
-        if (ShowAllFloors) ApplyNavTransparency(true);
-        else ApplyNavTransparency(false);
+        // Nếu đang show all floors thì tắt transparency khi chọn điểm
+        if (ShowAllFloors) ApplyNavTransparency(false);
 
         // Lưu điểm kết thúc
         SelectedTo = Mathf.Clamp(index, 0, allPoints.Count - 1);
@@ -797,7 +823,7 @@ public class NavigationController : MonoBehaviour
         navIsCrossFloor = IsCrossFloorRoute();
 
         // Nếu show all hoặc route khác tầng => bật transparency để nhìn xuyên
-        if (ShowAllFloors || navIsCrossFloor) ApplyNavTransparency(true);
+        if (navIsCrossFloor) ApplyNavTransparency(true);
         else ApplyNavTransparency(false);
 
         // Chuyển sang chỉ focus tầng xuất phát (không cho người dùng đổi tầng lúc route active)
@@ -806,6 +832,7 @@ public class NavigationController : MonoBehaviour
         // Đánh dấu route active
         IsRouteActive = true;
         NavigationStateChanged?.Invoke(true);
+        UpdateLabelsVisibility();
 
         // Spawn ping điểm đi/đến
         SpawnPings();
@@ -954,6 +981,7 @@ public class NavigationController : MonoBehaviour
 
         // Tắt chế độ preview cross-floor
         SetPreviewCrossFloorMode(false);
+        UpdateLabelsVisibility();
     }
 
     public void CancelAndResetToPlaceholder()
@@ -1580,8 +1608,7 @@ public class NavigationController : MonoBehaviour
         tmp.fontSize = labelSize * 0.42f;
 
         // Màu chữ
-        tmp.color = new Color32(46, 150, 50, 255);
-
+        tmp.color = new Color32(20, 20, 20, 255);
         // Canh giữa
         tmp.alignment = TextAlignmentOptions.Center;
 
@@ -1616,6 +1643,60 @@ public class NavigationController : MonoBehaviour
         allLabelTmps.Add(tmp);
 
         return go;
+    }
+
+    void ShowOnlyEndpointLabels() {
+        foreach (var kv in floorLabels) {
+            foreach (var label in kv.Value) {
+                if (label != null) label.SetActive(false);
+            }
+        }
+        if (SelectedFrom < 0 || SelectedTo < 0) return;
+        if (SelectedFrom == SelectedTo) return;
+
+        var startWp = allPoints[SelectedFrom];
+        if (startWp != null && pointToLabel.TryGetValue(startWp, out var startLabel) && startLabel != null) {
+            startLabel.SetActive(true);
+        }
+
+        var endWp = allPoints[SelectedTo];
+        if (endWp != null && pointToLabel.TryGetValue(endWp, out var endLabel) && endLabel != null)
+            endLabel.SetActive(true);
+    }
+
+    bool IsEndpointLabel(TextMeshPro tmp) {
+        if (tmp == null) return false;
+        if (SelectedFrom < 0 || SelectedTo < 0) return false;
+        if (SelectedFrom == SelectedTo) return false;
+
+        var startWp = allPoints[SelectedFrom];
+        var endWp = allPoints[SelectedTo];
+
+        if (startWp != null && pointToLabel.TryGetValue(startWp, out var startGo) && startGo != null)
+            if (tmp.gameObject == startGo) return true;
+
+        if (endWp != null && pointToLabel.TryGetValue(endWp, out var endGo) && endGo != null)
+            if (tmp.gameObject == endGo) return true;
+
+        return false;
+    }
+
+    bool IsAllowedByState(TextMeshPro tmp) {
+        if (IsRouteActive || isNavigating) {
+            return IsEndpointLabel(tmp);
+        }
+
+        Transform wp = tmp.transform.parent;
+        if (wp == null) return false;
+
+        for (int i = 0; i < allPoints.Count; i++)
+        {
+            if (allPoints[i] == wp) {
+                return visibleFloors.Contains(allPointFloorIndex[i]);
+            }
+        }
+
+        return false;
     }
 
     // =========================================================
@@ -1808,13 +1889,13 @@ public class NavigationController : MonoBehaviour
 
     void ApplyNavTransparency(bool enabled)
     {
-        // Nếu không bật transparency thì thôi
+        // Nếu không bật transparency thì return
         if (!makeFloorsTransparentInNav) return;
         if (floors == null || floors.Count == 0) return;
 
         if (enabled)
         {
-            // Duyệt tất cả tầng và renderer bên trong để thay vật liệu sang bản trong suốt
+            // Loop tất cả tầng và renderer bên trong để thay vật liệu sang bản trong suốt
             for (int i = 0; i < floors.Count; i++)
             {
                 var renderers = floors[i].GetComponentsInChildren<Renderer>(true);
